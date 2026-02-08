@@ -5,7 +5,7 @@ import { GoogleGenerativeAIEmbeddings } from "@langchain/google-genai";
 import { TaskType } from "@google/generative-ai";
 import dotenv from "dotenv";
 dotenv.config({ path: ".env", quiet: true });
-
+import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
 
 
 import { MemoryVectorStore } from "@langchain/classic/vectorstores/memory";
@@ -16,8 +16,8 @@ export const embeddings = new GoogleGenerativeAIEmbeddings({
 });
 
 
-
-const vector = await embeddings.embedQuery("Hello Gemini embeddings")
+// to convert normal text
+// const vector = await embeddings.embedQuery("Hello Gemini embeddings")
 
 // console.log("Embedded :", vector);
 
@@ -44,15 +44,36 @@ const worker = new Worker(
 
         console.log("📄 Pages loaded :", docs.length);
 
+
+        // text spilter
         const textsplitter = new RecursiveCharacterTextSplitter({ chunkSize: 100, chunkOverlap: 0 })
         const splitDocs = await textsplitter.splitDocuments(docs);
+
+        const clean_docs = splitDocs.filter(
+            d => typeof d.pageContent === "string" &&
+                d.pageContent.trim().length > 0
+        );
+
         console.log("splitted docs :", splitDocs[0]);
 
+        console.log("clean docs : ", clean_docs)
 
         const vectorstore = await MemoryVectorStore.fromDocuments(
-            [{ pageContent: splitDocs, metadata: {} }],
+            clean_docs,
             embeddings,
         );
+        console.log("Vector stored : ", vectorstore)
+
+        const retrivervectorstore = vectorstore.asRetriever(1);
+
+        const retriveDoc = await retrivervectorstore.invoke("Give me brief about this pdf with key topics ?")
+        console.log("Retrived answer : \n", retriveDoc)
+
+        retriveDoc[0].pageContent;
+
+
+
+
 
         return { success: true };
     },
