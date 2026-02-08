@@ -12,16 +12,29 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "dev : worker": "worker.js"
   },
   "dependencies": {
+    "@google/generative-ai": "^0.24.1",
+    "@langchain/classic": "^1.0.15",
+    "@langchain/community": "^1.1.12",
+    "@langchain/core": "^1.1.19",
+    "@langchain/google-genai": "^2.1.15",
+    "@langchain/textsplitters": "^1.0.1",
     "axios": "^1.13.4",
+    "bullmq": "^5.67.3",
     "cors": "^2.8.6",
     "dotenv": "^17.2.3",
     "express": "^5.2.1",
+    "install": "^0.13.0",
+    "ioredis": "^5.9.2",
+    "langchain": "^1.2.18",
     "mongodb": "^7.0.0",
     "multer": "^2.0.2",
     "next": "16.1.6",
+    "npm": "^11.9.0",
+    "pdf-parse": "^1.1.4",
     "react": "19.2.3",
     "react-dom": "19.2.3"
   },
@@ -30,8 +43,10 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "autoprefixer": "^10.4.24",
     "eslint": "^9",
     "eslint-config-next": "16.1.6",
+    "postcss": "^8.5.6",
     "tailwindcss": "^4",
     "typescript": "^5"
   }

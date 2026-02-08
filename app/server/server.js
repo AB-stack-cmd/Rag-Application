@@ -2,10 +2,21 @@ import express from "express";
 import cors from "cors"
 import path from "path";
 import multer from "multer";
-import fs from "fs"
+import fs from "fs" // file system
+import { Queue } from "bullmq"
+
+
 
 // express app
 const app = express();
+
+export const NewQueue = new Queue("pdf_upload", {
+    connection: {
+        host: "localhost",
+        port: 6379
+    }
+})
+const jobName = "file_send"
 
 // Path to join
 const pathName = path.join(process.cwd(), "uploads");
@@ -26,6 +37,8 @@ const Storage = multer.diskStorage({
     filename: (req, file, cd) => {
         const uniqueSuffix = Date.now() + "_" + file.originalname;
         cd(null, uniqueSuffix)
+
+
     }
 })
 
@@ -47,14 +60,23 @@ app.get("/", (req, res) => {
 });
 
 // POST route
-app.post("/upload", upload.single("pdf"), (req, res) => {
+app.post("/upload", upload.single("pdf"), async (req, res) => {
+
+    // job for worker
+    const jobs = await NewQueue.add(jobName, {
+        filename: req.file.originalname,
+        destination: req.file.destination,
+        path: req.file.path,
+        res: "response from server"
+    });
+
     const { name } = req.body;
     const file = req.file;
     console.log("File form client :", file)
     if (!upload) {
         console.log("Multer error")
     }
-    res.json({ message: `Hello ${name}, from POST route` });
+    return res.json({ message: `uploaded` });
 });
 
 // start server

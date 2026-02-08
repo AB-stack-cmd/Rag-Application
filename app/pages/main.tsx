@@ -43,21 +43,21 @@ function Main() {
 
   return (
     <div className="">
-    <div className="flex  items-center justify-center overflow-hidden ">
+    <div className="flex border  items-center justify-center overflow-hidden ">
     <div className="flex p-2 justify-center flex-col items-center m-10">
       <button className="border  rounded-2xl p-1" onClick={addDoc}>Upload PDF</button>
 
-      {file && (
-        <div className="bg-white text-black mt-4 p-2">
+
+      <div className=" border flex flex-col p-10">
+        {file && (
+        <div className="bg-white text-black mt-4 p-1">
           PDF created: {file.name}
         </div>
       )}
-
-      <div className=" border flex flex-col p-10">
         Enter Your Query : 
         <div className="p-1">
           <label >
-            <input className="border " id ="user_input" value={text} onChange={(e)=>setText(e.target.value)} />
+            <input className="border" id ="user_input" value={text} onChange={(e)=>setText(e.target.value)} />
           </label>
         </div>
       
