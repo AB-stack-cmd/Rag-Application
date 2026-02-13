@@ -1,85 +1,62 @@
 import express from "express";
-import cors from "cors"
-import path from "path";
+import cors from "cors";
 import multer from "multer";
-import fs from "fs" // file system
-import { Queue } from "bullmq"
+import fs from "fs";
+import path from "path";
+import dotenv from "dotenv";
+import { MemoryVectorStore } from "@langchain/classic/vectorstores/memory";
+import { GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI } from "@langchain/google-genai";
 
+dotenv.config();
 
-
-// express app
 const app = express();
+app.use(cors({ origin: "http://localhost:3000" }));
+app.use(express.json());
 
-export const NewQueue = new Queue("pdf_upload", {
-    connection: {
-        host: "localhost",
-        port: 6379
-    }
-})
-const jobName = "file_send"
+let vectorStore = null;
+let retriever = null;
 
-// Path to join
-const pathName = path.join(process.cwd(), "uploads");
-
-// create file if doesnt have
-if (!fs.existsSync(pathName)) {
-    fs.mkdirSync(pathName, { recursive: true }, (err) => {
-        if (err) throw err
-    })
-};
-
-
-// storage for multer
-const Storage = multer.diskStorage({
-    destination: (req, file, cd) => {
-        cd(null, pathName);
-    },
-    filename: (req, file, cd) => {
-        const uniqueSuffix = Date.now() + "_" + file.originalname;
-        cd(null, uniqueSuffix)
-
-
-    }
-})
-
-// middleware for connection of multer storage
-const upload = multer({ storage: Storage })
-
-//cors middleware
-app.use(cors({
-    origin: 'http://localhost:3000'
-}))
-
-app.use(express.json()); // to read JSON body
-
-app.use("/uploads", express.static("uploads"));
-
-// GET route
-app.get("/", (req, res) => {
-    return res.json({ message: "Hello from GET route" });
+const embeddings = new GoogleGenerativeAIEmbeddings({
+    apiKey: process.env.GOOGLE_API_KEY,
+    model: "gemini-embedding-001",
 });
 
-// POST route
-app.post("/upload", upload.single("pdf"), async (req, res) => {
+app.get("/status", async (req, res) => {
+    if (!vectorStore && fs.existsSync("vectorstore")) {
+        vectorStore = await FaissStore.load("vectorstore", embeddings);
+        retriever = vectorStore.asRetriever(3);
+    }
 
-    // job for worker
-    const jobs = await NewQueue.add(jobName, {
-        filename: req.file.originalname,
-        destination: req.file.destination,
-        path: req.file.path,
-        res: "response from server"
+    res.json({ ready: Boolean(retriever) });
+});
+
+app.post("/upload", async (req, res) => {
+    const { query } = req.body;
+
+    console.log(query);
+    if (!retriever) {
+        return res.status(400).json({ error: "PDF not ready" });
+    }
+
+    const docs = await retriever.invoke(query);
+    const context = docs.map(d => d.pageContent).join("\n\n");
+    console.log(context)
+    const llm = new ChatGoogleGenerativeAI({
+        apiKey: process.env.GOOGLE_API_KEY,
+        model: "gemini-2.5-flash",
     });
 
-    const { name } = req.body;
-    const file = req.file;
-    console.log("File form client :", file)
-    if (!upload) {
-        console.log("Multer error")
-    }
-    return res.json({ message: `uploaded` });
+    const result = await llm.invoke(`
+Answer ONLY from this context:
+
+${context}
+
+Question: ${query}
+`);
+
+    res.json({ answer: result.content });
 });
 
-// start server
 app.listen(4000, () => {
     console.log("Server running on http://localhost:4000");
 });

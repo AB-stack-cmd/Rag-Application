@@ -23,6 +23,9 @@ importers:
       '@langchain/google-genai':
         specifier: ^2.1.15
         version: 2.1.15(@langchain/core@1.1.19(openai@6.18.0(ws@8.19.0)(zod@4.3.6)))
+      '@langchain/openai':
+        specifier: ^1.2.7
+        version: 1.2.7(@langchain/core@1.1.19(openai@6.18.0(ws@8.19.0)(zod@4.3.6)))(ws@8.19.0)
       '@langchain/textsplitters':
         specifier: ^1.0.1
         version: 1.0.1(@langchain/core@1.1.19(openai@6.18.0(ws@8.19.0)(zod@4.3.6)))
@@ -861,6 +864,12 @@ packages:
 
   '@langchain/openai@1.2.5':
     resolution: {integrity: sha512-AtnzS0j8Kv7IIdXywp/N27ytsMIbmncvFckiaWyOGibgqQYZyyR3rFC6P4z2x4/yoMgU7nXcd8dTNf+mABzLUw==}
+    engines: {node: '>=20'}
+    peerDependencies:
+      '@langchain/core': ^1.0.0
+
+  '@langchain/openai@1.2.7':
+    resolution: {integrity: sha512-vR9zoF0/EZ03X0Tc6woIEWRDSDSr2l64n+MQCW8NduScJtBJs5r/Ng3Lrp2bjtJQywEMQoOhcrV2DMmAIPWgnw==}
     engines: {node: '>=20'}
     peerDependencies:
       '@langchain/core': ^1.0.0
@@ -3814,6 +3823,15 @@ snapshots:
       - react-dom
 
   '@langchain/openai@1.2.5(@langchain/core@1.1.19(openai@6.18.0(ws@8.19.0)(zod@4.3.6)))(ws@8.19.0)':
+    dependencies:
+      '@langchain/core': 1.1.19(openai@6.18.0(ws@8.19.0)(zod@4.3.6))
+      js-tiktoken: 1.0.21
+      openai: 6.18.0(ws@8.19.0)(zod@4.3.6)
+      zod: 4.3.6
+    transitivePeerDependencies:
+      - ws
+
+  '@langchain/openai@1.2.7(@langchain/core@1.1.19(openai@6.18.0(ws@8.19.0)(zod@4.3.6)))(ws@8.19.0)':
     dependencies:
       '@langchain/core': 1.1.19(openai@6.18.0(ws@8.19.0)(zod@4.3.6))
       js-tiktoken: 1.0.21
