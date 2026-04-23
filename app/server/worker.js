@@ -16,37 +16,38 @@ const embeddings = new GoogleGenerativeAIEmbeddings({
 
 const worker = new Worker(
     "pdf_upload",
-    async (job) => {
-        console.log("✅ Job received:", job.data);
+        async (job) => {
+            console.log("✅ Job received:", job.data);
 
-        const filePath = job.data.path;
+            const filePath = job.data.path;
 
-        if (!filePath || !fs.existsSync(filePath)) {
-            throw new Error("PDF file not found: " + filePath);
+            if (!filePath || !fs.existsSync(filePath)) {
+                throw new Error("PDF file not found: " + filePath);
+            }
+
+            const loader = new PDFLoader(filePath);
+            const docs = await loader.load();
+
+            const splitter = new RecursiveCharacterTextSplitter({
+                chunkSize: 500,
+                chunkOverlap: 50,
+            });
+
+            const splitDocs = await splitter.splitDocuments(docs);
+
+            const vectorStore = new MemoryVectorStore.fromDocuments(splitDocs, embeddings)
+
+            // ✅ SAVE TO DISK
+            await vectorStore.save("vectorstore");
+
+            console.log("✅ Vector store saved to disk");
+
+            return { success: true };
+        },
+        
+        {
+            connection: { host: "localhost", port: 6379 },
         }
-
-        const loader = new PDFLoader(filePath);
-        const docs = await loader.load();
-
-        const splitter = new RecursiveCharacterTextSplitter({
-            chunkSize: 500,
-            chunkOverlap: 50,
-        });
-
-        const splitDocs = await splitter.splitDocuments(docs);
-
-        const vectorStore = new MemoryVectorStore.fromDocuments(splitDocs, embeddings)
-
-        // ✅ SAVE TO DISK
-        await vectorStore.save("vectorstore");
-
-        console.log("✅ Vector store saved to disk");
-
-        return { success: true };
-    },
-    {
-        connection: { host: "localhost", port: 6379 },
-    }
 );
 
 worker.on("completed", (job) => {

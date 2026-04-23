@@ -13,9 +13,12 @@ const app = express();
 app.use(cors({ origin: "http://localhost:3000" }));
 app.use(express.json());
 
+const file = path.join(process.cwd(),"/uploads")
+
 let vectorStore = null;
 let retriever = null;
 
+// Embedding model
 const embeddings = new GoogleGenerativeAIEmbeddings({
     apiKey: process.env.GOOGLE_API_KEY,
     model: "gemini-embedding-001",
@@ -30,6 +33,7 @@ app.get("/status", async (req, res) => {
     res.json({ ready: Boolean(retriever) });
 });
 
+//Responding with output
 app.post("/upload", async (req, res) => {
     const { query } = req.body;
 
@@ -39,20 +43,22 @@ app.post("/upload", async (req, res) => {
     }
 
     const docs = await retriever.invoke(query);
+    
     const context = docs.map(d => d.pageContent).join("\n\n");
     console.log(context)
+
     const llm = new ChatGoogleGenerativeAI({
         apiKey: process.env.GOOGLE_API_KEY,
         model: "gemini-2.5-flash",
     });
 
     const result = await llm.invoke(`
-Answer ONLY from this context:
+    Answer ONLY from this context:
 
-${context}
+    ${context}
 
-Question: ${query}
-`);
+    Question: ${query}
+    `);
 
     res.json({ answer: result.content });
 });
