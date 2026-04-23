@@ -38,12 +38,13 @@ app.post("/upload", async (req, res) => {
     const { query } = req.body;
 
     console.log(query);
+    
     if (!retriever) {
         return res.status(400).json({ error: "PDF not ready" });
     }
 
     const docs = await retriever.invoke(query);
-    
+
     const context = docs.map(d => d.pageContent).join("\n\n");
     console.log(context)
 

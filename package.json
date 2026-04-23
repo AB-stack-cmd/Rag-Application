@@ -4,10 +4,21 @@
   "private": true,
   "description": "This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).",
   "keywords": [],
+  "homepage": "https://github.com/AB-stack-cmd/Rag-Application#readme",
+  "bugs": {
+    "url": "https://github.com/AB-stack-cmd/Rag-Application/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AB-stack-cmd/Rag-Application.git"
+  },
   "license": "ISC",
   "author": "",
   "type": "module",
   "main": "index.js",
+  "directories": {
+    "test": "test"
+  },
   "scripts": {
     "dev": "next dev ",
     "build": "next build",
