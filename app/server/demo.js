@@ -1,6 +1,3 @@
-
-
-
 import { GoogleGenerativeAIEmbeddings } from "@langchain/google-genai";
 import dotenv from "dotenv";
 dotenv.config({ path: ".env", quiet: true });

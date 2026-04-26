@@ -14,37 +14,36 @@ const embeddings = new GoogleGenerativeAIEmbeddings({
     model: "gemini-embedding-001",
 });
 
+
+// Worker for pdf
 const worker = new Worker(
-    "pdf_upload",
-        async (job) => {
-            console.log("✅ Job received:", job.data);
+  "query-queue",
+     async (job) => {
+        const { query } = job.data;
 
-            const filePath = job.data.path;
+        const retriever = await initRetriever();
 
-            if (!filePath || !fs.existsSync(filePath)) {
-                throw new Error("PDF file not found: " + filePath);
-            }
+        const docs = await retriever.invoke(query);
+        const context = docs.map(d => d.pageContent).join("\n\n");
 
-            const loader = new PDFLoader(filePath);
-            const docs = await loader.load();
+        const llm = new ChatGoogleGenerativeAI({
+        apiKey: process.env.GOOGLE_API_KEY,
+        model: "gemini-2.5-flash",
+        });
 
-            const splitter = new RecursiveCharacterTextSplitter({
-                chunkSize: 500,
-                chunkOverlap: 50,
-            });
+        const result = await llm.invoke(`
+            Answer ONLY from this context:
 
-            const splitDocs = await splitter.splitDocuments(docs);
+            ${context}
 
-            const vectorStore = new MemoryVectorStore.fromDocuments(splitDocs, embeddings)
+            Question: ${query}
+            `);
 
-            // ✅ SAVE TO DISK
-            await vectorStore.save("vectorstore");
-
-            console.log("✅ Vector store saved to disk");
-
-            return { success: true };
-        },
-        
+        return {
+            answer: result.content,
+            success : true
+            };
+    },
         {
             connection: { host: "localhost", port: 6379 },
         }
