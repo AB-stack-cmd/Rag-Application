@@ -7,6 +7,8 @@ import dotenv from "dotenv";
 import { MemoryVectorStore } from "@langchain/classic/vectorstores/memory";
 import { GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI } from "@langchain/google-genai";
 
+import { Query } from "./connection";
+
 dotenv.config();
 
 const app = express();
@@ -24,6 +26,8 @@ const embeddings = new GoogleGenerativeAIEmbeddings({
     model: "gemini-embedding-001",
 });
 
+
+
 app.get("/status", async (req, res) => {
     if (!vectorStore && fs.existsSync("vectorstore")) {
         vectorStore = await FaissStore.load("vectorstore", embeddings);
@@ -37,6 +41,10 @@ app.get("/status", async (req, res) => {
 app.post("/upload", async (req, res) => {
     const { query } = req.body;
 
+    upload_job = await Query.add("pdf_upload" , {query} )
+
+    job_done = await upload_job.waitUntilFinished(queueEvents)
+
     console.log(query);
     
     if (!retriever) {
@@ -45,6 +53,8 @@ app.post("/upload", async (req, res) => {
 
     const docs = await retriever.invoke(query);
 
+
+    // LLM check 
     const context = docs.map(d => d.pageContent).join("\n\n");
     console.log(context)
 
