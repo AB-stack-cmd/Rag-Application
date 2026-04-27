@@ -7,7 +7,7 @@ import dotenv from "dotenv";
 import { MemoryVectorStore } from "@langchain/classic/vectorstores/memory";
 import { GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI } from "@langchain/google-genai";
 
-import { Query } from "./connection";
+import { Query } from "./connection.js";
 
 dotenv.config();
 
@@ -26,7 +26,23 @@ const embeddings = new GoogleGenerativeAIEmbeddings({
     model: "gemini-embedding-001",
 });
 
+// storage config
+const uploadDir = path.join(process.cwd(), "uploads");
 
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir);
+}
+
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, uploadDir);
+  },
+  filename: (req, file, cb) => {
+    cb(null, Date.now() + "-" + file.originalname);
+  },
+});
+
+const upload = multer({ storage });
 
 app.get("/status", async (req, res) => {
     if (!vectorStore && fs.existsSync("vectorstore")) {
@@ -39,6 +55,8 @@ app.get("/status", async (req, res) => {
 
 //Responding with output
 app.post("/upload", async (req, res) => {
+
+    // Data from client
     const { query } = req.body;
 
     upload_job = await Query.add("pdf_upload" , {query} )
@@ -64,11 +82,11 @@ app.post("/upload", async (req, res) => {
     });
 
     const result = await llm.invoke(`
-    Answer ONLY from this context:
+        Answer ONLY from this context:
 
-    ${context}
+        ${context}
 
-    Question: ${query}
+        Question: ${query}
     `);
 
     res.json({ answer: result.content });
