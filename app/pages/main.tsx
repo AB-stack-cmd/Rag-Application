@@ -1,119 +1,116 @@
 'use client'
-import { useState, useRef, useEffect } from "react";
-import axios from "axios";
 
-function Main() {
-  const [file, setFile] = useState(null);
-  const [messages, setMessages] = useState([]);
+import { useState, useRef, useEffect, useCallback } from "react";
+
+type MessageType = 'system' | 'user' | 'assistant';
+
+interface Message {
+  type: MessageType;
+  content: string;
+  timestamp: Date;
+}
+
+interface ConvEntry {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+export default function PDFChat() {
+  const [file, setFile] = useState<File | null>(null);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [text, setText] = useState("");
   const [loading, setLoading] = useState(false);
   const [pdfReady, setPdfReady] = useState(false);
   const [uploadingStatus, setUploadingStatus] = useState("");
-  const messagesEndRef = useRef(null);
+  const [convHistory, setConvHistory] = useState<ConvEntry[]>([]);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  const scrollToBottom = () => {
+  const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
+  }, []);
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages]);
+  }, [messages, scrollToBottom]);
 
-  // Poll for PDF processing status
-  useEffect(() => {
-    if (!file || pdfReady) return;
-    
-    const interval = setInterval(async () => {
-      try {
-        const response = await axios.get("http://localhost:4000/status");
-        if (response.data.ready) {
-          setPdfReady(true);
-          setUploadingStatus("");
-          setMessages(prev => [...prev, {
-            type: 'system',
-            content: `✓ PDF loaded successfully. Ready for queries.`,
-            timestamp: new Date()
-          }]);
-          clearInterval(interval);
-        }
-      } catch (error) {
-        console.error("Error checking status:", error);
-      }
-    }, 2000);
-
-    return () => clearInterval(interval);
-  }, [file, pdfReady]);
+  const appendMessage = useCallback((type: MessageType, content: string) => {
+    setMessages(prev => [...prev, { type, content, timestamp: new Date() }]);
+  }, []);
 
   // Upload PDF to backend
-  async function uploadPDF(selectedFile) {
-    try {
-      setFile(selectedFile);
-      setUploadingStatus("Uploading...");
-      setPdfReady(false);
-      
-      setMessages(prev => [...prev, {
-        type: 'system',
-        content: `📄 Importing: ${selectedFile.name}`,
-        timestamp: new Date()
-      }]);
+  async function uploadPDF(selectedFile: File) {
+    setFile(selectedFile);
+    setUploadingStatus("Uploading...");
+    setPdfReady(false);
+    setConvHistory([]);
 
-      // Create FormData and append the PDF file
+    appendMessage('system', `📄 Importing: ${selectedFile.name}`);
+
+    try {
       const formData = new FormData();
       formData.append("pdf", selectedFile);
 
-      // Send POST request to upload endpoint
-      await axios.post("http://localhost:4000/upload", formData, {
-        headers: {
-          "Content-Type": "multipart/form-data"
-        }
+      const res = await fetch("http://localhost:4000/upload", {
+        method: "POST",
+        body: formData,
       });
+
+      if (!res.ok) throw new Error(`Upload failed: ${res.statusText}`);
 
       setUploadingStatus("Processing PDF...");
 
+      // Poll for ready status
+      const interval = setInterval(async () => {
+        try {
+          const statusRes = await fetch("http://localhost:4000/status");
+          const data = await statusRes.json();
+          if (data.ready) {
+            clearInterval(interval);
+            setPdfReady(true);
+            setUploadingStatus("");
+            appendMessage('system', "✓ PDF loaded successfully. Ready for queries.");
+          }
+        } catch {
+          clearInterval(interval);
+          setUploadingStatus("");
+          appendMessage('system', "❌ Status check failed.");
+        }
+      }, 2000);
+
     } catch (error) {
-      console.error("Upload error:", error);
       setUploadingStatus("");
       setPdfReady(false);
-      setMessages(prev => [...prev, {
-        type: 'system',
-        content: `❌ Upload failed: ${error.message}`,
-        timestamp: new Date()
-      }]);
+      appendMessage('system', `❌ Upload failed: ${error instanceof Error ? error.message : "Unknown error"}`);
     }
   }
 
   // Query the PDF content
-  async function queryPDF(query) {
-    try {
-      // Add user message to chat
-      setMessages(prev => [...prev, {
-        type: 'user',
-        content: query,
-        timestamp: new Date()
-      }]);
-      
-      setLoading(true);
-      setText("");
+  async function queryPDF(query: string) {
+    const updatedHistory: ConvEntry[] = [...convHistory, { role: 'user', content: query }];
+    setConvHistory(updatedHistory);
+    appendMessage('user', query);
+    setLoading(true);
+    setText("");
+    if (textareaRef.current) textareaRef.current.style.height = 'auto';
 
-      // Send POST request to query endpoint
-      const response = await axios.post("http://localhost:4000/query", {
-        query: query
+    try {
+      const res = await fetch("http://localhost:4000/query", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query, history: updatedHistory }),
       });
 
-      // Add AI response to chat
-      setMessages(prev => [...prev, {
-        type: 'assistant',
-        content: response.data.answer,
-        timestamp: new Date()
-      }]);
+      if (!res.ok) throw new Error(`Query failed: ${res.statusText}`);
+
+      const data = await res.json();
+      const answer: string = data.answer ?? "No response received.";
+
+      setConvHistory(prev => [...prev, { role: 'assistant', content: answer }]);
+      appendMessage('assistant', answer);
 
     } catch (error) {
-      console.error("Query error:", error);
-      setMessages(prev => [...prev, {
-        type: 'assistant',
-        content: `Error: ${error.response?.data?.message || error.message}`,
-        timestamp: new Date()
-      }]);
+      appendMessage('assistant', `Error: ${error instanceof Error ? error.message : "Unknown error"}`);
     } finally {
       setLoading(false);
     }
@@ -124,272 +121,195 @@ function Main() {
     el.type = "file";
     el.accept = "application/pdf";
     el.onchange = async (e) => {
-      const selectedFile = e.target.files[0];
+      const selectedFile = (e.target as HTMLInputElement).files?.[0];
       if (!selectedFile) return;
       await uploadPDF(selectedFile);
     };
     el.click();
   }
 
-  async function handleSubmit(e) {
-    e.preventDefault();
+  async function handleSubmit() {
     if (!text.trim() || !pdfReady || loading) return;
-    await queryPDF(text);
+    await queryPDF(text.trim());
   }
+
+  function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleSubmit();
+    }
+  }
+
+  function handleTextareaInput(e: React.ChangeEvent<HTMLTextAreaElement>) {
+    setText(e.target.value);
+    const el = e.target;
+    el.style.height = "auto";
+    el.style.height = Math.min(el.scrollHeight, 120) + "px";
+  }
+
+  const canSend = pdfReady && text.trim() !== "" && !loading;
 
   return (
     <div style={{
       minHeight: '100vh',
-      background: '#0a0a0a',
+      background: '#080808',
       fontFamily: "'JetBrains Mono', 'Fira Code', 'Consolas', monospace",
       display: 'flex',
       flexDirection: 'column',
-      color: '#fff'
+      color: '#fff',
     }}>
-      {/* Header */}
+
+      {/* ── Header ── */}
       <div style={{
-        padding: '20px 24px',
-        background: 'linear-gradient(135deg, #1a1a1a 0%, #0f0f0f 100%)',
-        borderBottom: '1px solid #222',
+        padding: '16px 24px',
+        background: '#111',
+        borderBottom: '1px solid #1e1e1e',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        boxShadow: '0 4px 20px rgba(0,0,0,0.5)'
+        flexShrink: 0,
       }}>
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '12px'
-        }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <div style={{
-            width: '10px',
-            height: '10px',
-            borderRadius: '50%',
+            width: 9, height: 9, borderRadius: '50%', flexShrink: 0,
             background: pdfReady ? '#00ff88' : '#ff4444',
-            boxShadow: pdfReady ? '0 0 10px #00ff88' : '0 0 10px #ff4444',
-            animation: 'pulse 2s ease-in-out infinite'
-          }}></div>
+            boxShadow: pdfReady ? '0 0 8px #00ff8888' : '0 0 8px #ff444488',
+            transition: 'background 0.4s, box-shadow 0.4s',
+          }} />
           <h1 style={{
-            fontSize: '18px',
-            fontWeight: '700',
-            margin: 0,
-            letterSpacing: '0.5px',
-            color: '#fff',
-            textTransform: 'uppercase'
-          }}>
-            PDF NEURAL NET
-          </h1>
+            fontSize: 15, fontWeight: 700, letterSpacing: '1.5px',
+            textTransform: 'uppercase', color: '#fff', margin: 0,
+          }}>PDF Neural Net</h1>
         </div>
-        
+
         <button
           onClick={addDoc}
           style={{
-            padding: '10px 20px',
-            background: 'linear-gradient(135deg, #ff0080 0%, #7928ca 100%)',
-            border: '1px solid #ff0080',
-            borderRadius: '6px',
-            color: '#fff',
-            fontSize: '13px',
-            fontWeight: '700',
-            cursor: 'pointer',
-            transition: 'all 0.3s ease',
-            textTransform: 'uppercase',
-            letterSpacing: '1px',
-            boxShadow: '0 0 20px rgba(255, 0, 128, 0.3)',
-            fontFamily: 'inherit'
+            padding: '9px 18px',
+            background: 'linear-gradient(135deg, #ff0080, #7928ca)',
+            border: 'none', borderRadius: 6,
+            color: '#fff', fontSize: 12, fontWeight: 700,
+            cursor: 'pointer', letterSpacing: '1px', textTransform: 'uppercase',
+            fontFamily: 'inherit', whiteSpace: 'nowrap',
+            transition: 'opacity 0.2s, transform 0.15s',
           }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.transform = 'translateY(-2px)';
-            e.currentTarget.style.boxShadow = '0 0 30px rgba(255, 0, 128, 0.6)';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.transform = 'translateY(0)';
-            e.currentTarget.style.boxShadow = '0 0 20px rgba(255, 0, 128, 0.3)';
-          }}
+          onMouseEnter={e => { e.currentTarget.style.opacity = '0.85'; e.currentTarget.style.transform = 'translateY(-1px)'; }}
+          onMouseLeave={e => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.transform = 'translateY(0)'; }}
         >
-          <span style={{ marginRight: '8px' }}>⬆</span>
-          Import PDF
+          ⬆ Import PDF
         </button>
       </div>
 
-      {/* File Status Bar */}
+      {/* ── File bar ── */}
       {file && (
         <div style={{
-          padding: '12px 24px',
-          background: '#111',
-          borderBottom: '1px solid #222',
+          padding: '10px 24px',
+          background: '#0d0d0d',
+          borderBottom: '1px solid #1a1a1a',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          fontSize: '13px'
+          gap: 12,
+          fontSize: 12,
+          flexShrink: 0,
         }}>
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '10px',
-            color: '#00ff88'
-          }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#00ff88', minWidth: 0 }}>
             <span>▸</span>
-            <span style={{ fontWeight: '600' }}>{file.name}</span>
-            <span style={{ color: '#666' }}>|</span>
-            <span style={{ color: '#888' }}>{(file.size / 1024).toFixed(1)} KB</span>
+            <span style={{
+              whiteSpace: 'nowrap', overflow: 'hidden',
+              textOverflow: 'ellipsis', fontWeight: 600,
+            }}>{file.name}</span>
+            <span style={{ color: '#555', flexShrink: 0 }}>|</span>
+            <span style={{ color: '#555', flexShrink: 0 }}>{(file.size / 1024).toFixed(1)} KB</span>
           </div>
+
           {uploadingStatus && (
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              color: '#ff0080'
-            }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#ff0080', flexShrink: 0 }}>
               <div style={{
-                width: '12px',
-                height: '12px',
-                border: '2px solid #ff0080',
-                borderTopColor: 'transparent',
+                width: 11, height: 11,
+                border: '2px solid #ff0080', borderTopColor: 'transparent',
                 borderRadius: '50%',
-                animation: 'spin 0.8s linear infinite'
-              }}></div>
+                animation: 'spin 0.7s linear infinite',
+              }} />
               <span>{uploadingStatus}</span>
             </div>
           )}
         </div>
       )}
 
-      {/* Messages Container */}
+      {/* ── Messages ── */}
       <div style={{
         flex: 1,
         overflowY: 'auto',
-        padding: '24px',
-        background: '#0a0a0a',
+        padding: '20px 24px',
+        background: '#080808',
         backgroundImage: `
-          linear-gradient(rgba(255, 0, 128, 0.03) 1px, transparent 1px),
-          linear-gradient(90deg, rgba(255, 0, 128, 0.03) 1px, transparent 1px)
+          linear-gradient(rgba(255,0,128,.025) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(255,0,128,.025) 1px, transparent 1px)
         `,
-        backgroundSize: '50px 50px'
+        backgroundSize: '48px 48px',
       }}>
-        <div style={{
-          maxWidth: '900px',
-          margin: '0 auto'
-        }}>
+        <div style={{ maxWidth: 860, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 18 }}>
+
           {messages.length === 0 && !file && (
-            <div style={{
-              textAlign: 'center',
-              padding: '60px 20px',
-              color: '#666'
-            }}>
-              <div style={{
-                fontSize: '48px',
-                marginBottom: '20px',
-                opacity: 0.3
-              }}>⚡</div>
+            <div style={{ textAlign: 'center', padding: '80px 20px', color: '#444' }}>
+              <div style={{ fontSize: 40, opacity: 0.25, marginBottom: 18 }}>⚡</div>
               <h2 style={{
-                fontSize: '24px',
-                fontWeight: '700',
-                marginBottom: '12px',
-                color: '#999',
-                textTransform: 'uppercase',
-                letterSpacing: '2px'
-              }}>
-                Initialize Protocol
-              </h2>
-              <p style={{
-                fontSize: '14px',
-                color: '#666',
-                margin: 0
-              }}>
-                Import a PDF document to begin neural analysis
-              </p>
+                fontSize: 18, fontWeight: 700, letterSpacing: '2px',
+                textTransform: 'uppercase', color: '#555', marginBottom: 8,
+              }}>Initialize Protocol</h2>
+              <p style={{ fontSize: 13, color: '#444' }}>Import a PDF document to begin neural analysis</p>
             </div>
           )}
 
           {messages.map((msg, idx) => (
-            <div
-              key={idx}
-              style={{
-                marginBottom: '24px',
-                animation: 'fadeIn 0.3s ease-in'
-              }}
-            >
+            <div key={idx} style={{ animation: 'fadeUp 0.3s ease-out' }}>
+
               {msg.type === 'system' && (
                 <div style={{
-                  textAlign: 'center',
-                  padding: '12px',
-                  background: 'rgba(0, 255, 136, 0.05)',
-                  border: '1px solid rgba(0, 255, 136, 0.2)',
-                  borderRadius: '8px',
-                  fontSize: '13px',
-                  color: '#00ff88',
-                  fontWeight: '500'
+                  textAlign: 'center', padding: '10px 16px',
+                  background: 'rgba(0,255,136,.05)',
+                  border: '1px solid rgba(0,255,136,.18)',
+                  borderRadius: 8, fontSize: 12, color: '#00ff88',
                 }}>
                   {msg.content}
                 </div>
               )}
 
               {msg.type === 'user' && (
-                <div style={{
-                  display: 'flex',
-                  justifyContent: 'flex-end',
-                  gap: '12px'
-                }}>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'flex-end', gap: 10 }}>
                   <div style={{
-                    maxWidth: '70%',
-                    padding: '16px 20px',
-                    background: 'linear-gradient(135deg, #ff0080 0%, #7928ca 100%)',
-                    borderRadius: '12px 12px 4px 12px',
-                    fontSize: '14px',
-                    lineHeight: '1.6',
-                    boxShadow: '0 4px 12px rgba(255, 0, 128, 0.3)',
-                    border: '1px solid rgba(255, 0, 128, 0.5)'
+                    maxWidth: '68%', padding: '13px 17px',
+                    background: 'linear-gradient(135deg, #ff0080, #7928ca)',
+                    borderRadius: '14px 14px 4px 14px',
+                    fontSize: 13, lineHeight: 1.65, wordBreak: 'break-word',
                   }}>
                     {msg.content}
                   </div>
                   <div style={{
-                    width: '36px',
-                    height: '36px',
-                    background: 'linear-gradient(135deg, #ff0080 0%, #7928ca 100%)',
-                    borderRadius: '8px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: '18px',
-                    border: '1px solid rgba(255, 0, 128, 0.5)',
-                    flexShrink: 0
-                  }}>
-                    👤
-                  </div>
+                    width: 32, height: 32, borderRadius: 7, flexShrink: 0,
+                    background: 'linear-gradient(135deg,#ff0080,#7928ca)',
+                    border: '1px solid rgba(255,0,128,.4)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15,
+                  }}>👤</div>
                 </div>
               )}
 
               {msg.type === 'assistant' && (
-                <div style={{
-                  display: 'flex',
-                  gap: '12px'
-                }}>
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
                   <div style={{
-                    width: '36px',
-                    height: '36px',
-                    background: 'linear-gradient(135deg, #00ff88 0%, #00ccff 100%)',
-                    borderRadius: '8px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: '18px',
-                    border: '1px solid rgba(0, 255, 136, 0.5)',
-                    boxShadow: '0 0 20px rgba(0, 255, 136, 0.3)',
-                    flexShrink: 0
-                  }}>
-                    🤖
-                  </div>
+                    width: 32, height: 32, borderRadius: 7, flexShrink: 0,
+                    background: 'linear-gradient(135deg,#00ff88,#00ccff)',
+                    border: '1px solid rgba(0,255,136,.4)',
+                    boxShadow: '0 0 14px rgba(0,255,136,.25)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15,
+                  }}>🤖</div>
                   <div style={{
-                    maxWidth: '70%',
-                    padding: '16px 20px',
-                    background: '#1a1a1a',
-                    borderRadius: '12px 12px 12px 4px',
-                    fontSize: '14px',
-                    lineHeight: '1.7',
-                    border: '1px solid #333',
-                    boxShadow: '0 4px 12px rgba(0, 0, 0, 0.5)',
-                    whiteSpace: 'pre-wrap'
+                    maxWidth: '68%', padding: '13px 17px',
+                    background: '#141414', border: '1px solid #272727',
+                    borderRadius: '14px 14px 14px 4px',
+                    fontSize: 13, lineHeight: 1.75,
+                    whiteSpace: 'pre-wrap', wordBreak: 'break-word',
                   }}>
                     {msg.content}
                   </div>
@@ -399,58 +319,25 @@ function Main() {
           ))}
 
           {loading && (
-            <div style={{
-              display: 'flex',
-              gap: '12px',
-              animation: 'fadeIn 0.3s ease-in'
-            }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, animation: 'fadeUp 0.3s ease-out' }}>
               <div style={{
-                width: '36px',
-                height: '36px',
-                background: 'linear-gradient(135deg, #00ff88 0%, #00ccff 100%)',
-                borderRadius: '8px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: '18px',
-                border: '1px solid rgba(0, 255, 136, 0.5)',
-                boxShadow: '0 0 20px rgba(0, 255, 136, 0.3)',
-                flexShrink: 0
-              }}>
-                🤖
-              </div>
+                width: 32, height: 32, borderRadius: 7, flexShrink: 0,
+                background: 'linear-gradient(135deg,#00ff88,#00ccff)',
+                border: '1px solid rgba(0,255,136,.4)',
+                boxShadow: '0 0 14px rgba(0,255,136,.25)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15,
+              }}>🤖</div>
               <div style={{
-                padding: '16px 20px',
-                background: '#1a1a1a',
-                borderRadius: '12px',
-                border: '1px solid #333',
-                display: 'flex',
-                gap: '6px',
-                alignItems: 'center'
+                padding: '14px 18px', background: '#141414',
+                border: '1px solid #272727', borderRadius: 12,
+                display: 'flex', gap: 5, alignItems: 'center',
               }}>
-                <div style={{
-                  width: '8px',
-                  height: '8px',
-                  background: '#00ff88',
-                  borderRadius: '50%',
-                  animation: 'bounce 1.4s infinite ease-in-out both',
-                  animationDelay: '-0.32s'
-                }}></div>
-                <div style={{
-                  width: '8px',
-                  height: '8px',
-                  background: '#00ff88',
-                  borderRadius: '50%',
-                  animation: 'bounce 1.4s infinite ease-in-out both',
-                  animationDelay: '-0.16s'
-                }}></div>
-                <div style={{
-                  width: '8px',
-                  height: '8px',
-                  background: '#00ff88',
-                  borderRadius: '50%',
-                  animation: 'bounce 1.4s infinite ease-in-out both'
-                }}></div>
+                {['-0.32s', '-0.16s', '0s'].map((delay, i) => (
+                  <div key={i} style={{
+                    width: 7, height: 7, background: '#00ff88', borderRadius: '50%',
+                    animation: `bounce 1.3s ${delay} infinite ease-in-out both`,
+                  }} />
+                ))}
               </div>
             </div>
           )}
@@ -459,162 +346,111 @@ function Main() {
         </div>
       </div>
 
-      {/* Input Area */}
+      {/* ── Input area ── */}
       <div style={{
-        padding: '20px 24px',
-        background: '#0f0f0f',
-        borderTop: '1px solid #222',
-        boxShadow: '0 -4px 20px rgba(0,0,0,0.5)'
+        padding: '16px 24px 20px',
+        background: '#0d0d0d',
+        borderTop: '1px solid #1a1a1a',
+        flexShrink: 0,
       }}>
         <div style={{
-          maxWidth: '900px',
-          margin: '0 auto'
+          maxWidth: 860, margin: '0 auto',
+          display: 'flex', alignItems: 'flex-end', gap: 10,
         }}>
-          <form onSubmit={handleSubmit} style={{
-            display: 'flex',
-            gap: '12px',
-            alignItems: 'flex-end'
-          }}>
-            <div style={{ flex: 1 }}>
-              <textarea
-                value={text}
-                onChange={(e) => setText(e.target.value)}
-                placeholder={pdfReady ? "Enter your query..." : "Import a PDF to start"}
-                disabled={!pdfReady}
-                rows={1}
-                onInput={(e) => {
-                  e.target.style.height = 'auto';
-                  e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px';
-                }}
-                style={{
-                  width: '100%',
-                  padding: '14px 18px',
-                  background: '#1a1a1a',
-                  border: '1px solid #333',
-                  borderRadius: '8px',
-                  fontSize: '14px',
-                  fontFamily: 'inherit',
-                  resize: 'none',
-                  outline: 'none',
-                  transition: 'all 0.3s ease',
-                  color: '#fff',
-                  cursor: pdfReady ? 'text' : 'not-allowed',
-                  minHeight: '48px',
-                  maxHeight: '120px'
-                }}
-                onFocus={(e) => {
-                  if (pdfReady) {
-                    e.currentTarget.style.borderColor = '#ff0080';
-                    e.currentTarget.style.boxShadow = '0 0 0 2px rgba(255, 0, 128, 0.1)';
-                  }
-                }}
-                onBlur={(e) => {
-                  e.currentTarget.style.borderColor = '#333';
-                  e.currentTarget.style.boxShadow = 'none';
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    handleSubmit(e);
-                  }
-                }}
-              />
-            </div>
-
-            <button
-              type="submit"
-              disabled={!pdfReady || !text.trim() || loading}
+          {/* Textarea */}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <textarea
+              ref={textareaRef}
+              value={text}
+              onChange={handleTextareaInput}
+              onKeyDown={handleKeyDown}
+              placeholder={pdfReady ? "Enter your query..." : "Import a PDF to start"}
+              disabled={!pdfReady}
+              rows={1}
               style={{
-                padding: '14px 24px',
-                background: (pdfReady && text.trim() && !loading) 
-                  ? 'linear-gradient(135deg, #00ff88 0%, #00ccff 100%)'
-                  : '#222',
-                border: '1px solid ' + ((pdfReady && text.trim() && !loading) ? '#00ff88' : '#333'),
-                borderRadius: '8px',
-                color: (pdfReady && text.trim() && !loading) ? '#000' : '#666',
-                fontSize: '14px',
-                fontWeight: '700',
-                cursor: (pdfReady && text.trim() && !loading) ? 'pointer' : 'not-allowed',
-                transition: 'all 0.3s ease',
-                textTransform: 'uppercase',
-                letterSpacing: '1px',
+                width: '100%',
+                padding: '12px 16px',
+                background: '#161616',
+                border: `1px solid ${text && pdfReady ? '#ff0080' : '#2a2a2a'}`,
+                borderRadius: 8,
+                fontSize: 13,
                 fontFamily: 'inherit',
-                minHeight: '48px',
-                boxShadow: (pdfReady && text.trim() && !loading) ? '0 0 20px rgba(0, 255, 136, 0.3)' : 'none'
+                color: '#fff',
+                resize: 'none',
+                outline: 'none',
+                lineHeight: 1.5,
+                minHeight: 44,
+                maxHeight: 120,
+                overflowY: 'auto',
+                display: 'block',
+                boxSizing: 'border-box',
+                transition: 'border-color 0.2s',
+                cursor: pdfReady ? 'text' : 'not-allowed',
+                opacity: pdfReady ? 1 : 0.45,
               }}
-              onMouseEnter={(e) => {
-                if (pdfReady && text.trim() && !loading) {
-                  e.currentTarget.style.boxShadow = '0 0 30px rgba(0, 255, 136, 0.5)';
-                  e.currentTarget.style.transform = 'translateY(-2px)';
-                }
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.boxShadow = (pdfReady && text.trim() && !loading) ? '0 0 20px rgba(0, 255, 136, 0.3)' : 'none';
-                e.currentTarget.style.transform = 'translateY(0)';
-              }}
-            >
-              Send ⚡
-            </button>
-          </form>
+            />
+          </div>
 
-          {!pdfReady && (
-            <p style={{
-              fontSize: '12px',
-              color: '#666',
-              marginTop: '12px',
-              textAlign: 'center',
-              margin: '12px 0 0 0'
-            }}>
-              ⚠ Neural network offline - Import PDF to activate
-            </p>
-          )}
+          {/* Send button */}
+          <button
+            onClick={handleSubmit}
+            disabled={!canSend}
+            style={{
+              padding: '0 20px',
+              height: 44,
+              borderRadius: 8,
+              border: `1px solid ${canSend ? '#00ff88' : '#333'}`,
+              background: canSend
+                ? 'linear-gradient(135deg, #00ff88, #00ccff)'
+                : '#1a1a1a',
+              color: canSend ? '#000' : '#555',
+              fontSize: 13, fontWeight: 700,
+              fontFamily: 'inherit',
+              cursor: canSend ? 'pointer' : 'not-allowed',
+              textTransform: 'uppercase', letterSpacing: '1px',
+              whiteSpace: 'nowrap', flexShrink: 0,
+              boxShadow: canSend ? '0 0 16px rgba(0,255,136,.28)' : 'none',
+              transition: 'all 0.2s',
+            }}
+            onMouseEnter={e => { if (canSend) { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = '0 0 24px rgba(0,255,136,.45)'; } }}
+            onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = canSend ? '0 0 16px rgba(0,255,136,.28)' : 'none'; }}
+          >
+            Send ⚡
+          </button>
         </div>
+
+        {!pdfReady && (
+          <p style={{
+            fontSize: 11, color: '#444', textAlign: 'center',
+            margin: '10px 0 0',
+          }}>
+            ⚠ Neural network offline — Import PDF to activate
+          </p>
+        )}
       </div>
 
       <style>{`
         @keyframes spin {
-          from { transform: rotate(0deg); }
           to { transform: rotate(360deg); }
         }
-        
-        @keyframes pulse {
-          0%, 100% { opacity: 1; }
-          50% { opacity: 0.5; }
+        @keyframes fadeUp {
+          from { opacity: 0; transform: translateY(8px); }
+          to   { opacity: 1; transform: translateY(0); }
         }
-        
-        @keyframes fadeIn {
-          from { opacity: 0; transform: translateY(10px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-        
         @keyframes bounce {
-          0%, 80%, 100% { 
-            transform: scale(0);
-          } 
-          40% { 
-            transform: scale(1);
-          }
+          0%, 80%, 100% { transform: scale(0); }
+          40%           { transform: scale(1); }
         }
-        
-        ::-webkit-scrollbar {
-          width: 8px;
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #0a0a0a; }
+        ::-webkit-scrollbar-thumb { background: #2a2a2a; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #3a3a3a; }
+        textarea:focus {
+          border-color: #ff0080 !important;
+          box-shadow: 0 0 0 2px rgba(255,0,128,.1);
         }
-        
-        ::-webkit-scrollbar-track {
-          background: #0a0a0a;
-        }
-        
-        ::-webkit-scrollbar-thumb {
-          background: #333;
-          border-radius: 4px;
-        }
-        
-        ::-webkit-scrollbar-thumb:hover {
-          background: #444;
-        }
+        textarea::placeholder { color: #444; }
       `}</style>
     </div>
   );
 }
-
-export default Main;

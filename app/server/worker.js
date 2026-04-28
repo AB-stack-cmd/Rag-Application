@@ -21,7 +21,7 @@ const worker = new Worker(
      async (job) => {
         const { query } = job.data;
 
-        const retriever = await initRetriever();
+        // const retriever = await initRetriever();
 
         const docs = await retriever.invoke(query);
         const context = docs.map(d => d.pageContent).join("\n\n");

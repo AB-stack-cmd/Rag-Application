@@ -33,6 +33,14 @@ if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir);
 }
 
+const files = fs.readdirSync(uploadDir);
+
+const pdfFiles = files.filter(file => file.endsWith(".pdf"));
+
+console.log(pdfFiles)
+
+
+// storage
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     cb(null, uploadDir);
@@ -69,25 +77,9 @@ app.post("/upload", async (req, res) => {
         return res.status(400).json({ error: "PDF not ready" });
     }
 
-    const docs = await retriever.invoke(query);
+    retriever = job_done.text()
+   
 
-
-    // LLM check 
-    const context = docs.map(d => d.pageContent).join("\n\n");
-    console.log(context)
-
-    const llm = new ChatGoogleGenerativeAI({
-        apiKey: process.env.GOOGLE_API_KEY,
-        model: "gemini-2.5-flash",
-    });
-
-    const result = await llm.invoke(`
-        Answer ONLY from this context:
-
-        ${context}
-
-        Question: ${query}
-    `);
 
     res.json({ answer: result.content });
 });
@@ -95,3 +87,10 @@ app.post("/upload", async (req, res) => {
 app.listen(4000, () => {
     console.log("Server running on http://localhost:4000");
 });
+
+
+
+
+
+
+
