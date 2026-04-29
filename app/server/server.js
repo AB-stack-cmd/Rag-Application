@@ -1,96 +1,66 @@
 import express from "express";
 import cors from "cors";
 import multer from "multer";
-import fs from "fs";
 import path from "path";
-import dotenv from "dotenv";
-import { MemoryVectorStore } from "@langchain/classic/vectorstores/memory";
-import { GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI } from "@langchain/google-genai";
+import fs from "fs";
 
-import { Query } from "./connection.js";
-
-dotenv.config();
+import { Query } from "./connection";
 
 const app = express();
 app.use(cors({ origin: "http://localhost:3000" }));
 app.use(express.json());
 
-const file = path.join(process.cwd(),"/uploads")
-
-let vectorStore = null;
-let retriever = null;
-
-// Embedding model
-const embeddings = new GoogleGenerativeAIEmbeddings({
-    apiKey: process.env.GOOGLE_API_KEY,
-    model: "gemini-embedding-001",
-});
-
-// storage config
+// ================= FILE SETUP =================
 const uploadDir = path.join(process.cwd(), "uploads");
 
 if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir);
 }
 
-const files = fs.readdirSync(uploadDir);
-
-const pdfFiles = files.filter(file => file.endsWith(".pdf"));
-
-console.log(pdfFiles)
-
-
-// storage
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, uploadDir);
-  },
-  filename: (req, file, cb) => {
-    cb(null, Date.now() + "-" + file.originalname);
-  },
+  destination: (req, file, cb) => cb(null, "uploads/"),
+  filename: (req, file, cb) => cb(null, file.originalname),
 });
 
-const upload = multer({ storage });
+const upload = multer({ storage : storage });
 
-app.get("/status", async (req, res) => {
-    if (!vectorStore && fs.existsSync("vectorstore")) {
-        vectorStore = await FaissStore.load("vectorstore", embeddings);
-        retriever = vectorStore.asRetriever(3);
+// ================= UPLOAD =================
+app.post("/upload", upload.single("pdf"), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: "No file uploaded" });
     }
 
-    res.json({ ready: Boolean(retriever) });
+    const job = await Query.add("process-pdf", {
+      filePath: req.file.path,
+    });
+
+    // Wait for completion (optional)
+    const result = await job.waitUntilFinished(Query);
+
+    res.json({
+      message: "Processed",
+      jobId: job.id,
+      result,
+    });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Upload failed" });
+  }
 });
 
-//Responding with output
-app.post("/upload", async (req, res) => {
+// ================= STATUS =================
+app.get("/job/:id", async (req, res) => {
+  const job = await pdfQueue.getJob(req.params.id);
 
-    // Data from client
-    const { query } = req.body;
+  if (!job) return res.json({ status: "not found" });
 
-    upload_job = await Query.add("pdf_upload" , {query} )
+  const state = await job.getState();
 
-    job_done = await upload_job.waitUntilFinished(queueEvents)
-
-    console.log(query);
-    
-    if (!retriever) {
-        return res.status(400).json({ error: "PDF not ready" });
-    }
-
-    retriever = job_done.text()
-   
-
-
-    res.json({ answer: result.content });
+  res.json({ status: state });
 });
 
 app.listen(4000, () => {
-    console.log("Server running on http://localhost:4000");
+  console.log("Server running on http://localhost:4000");
 });
-
-
-
-
-
-
-

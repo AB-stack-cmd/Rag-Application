@@ -19,7 +19,14 @@ const embeddings = new GoogleGenerativeAIEmbeddings({
 const worker = new Worker(
   "query-queue",
      async (job) => {
-        const { query } = job.data;
+        const { filePath } = job.data;
+        console.log(filePath)
+
+        // read file
+        const buffer = fs.readFileSync(filePath);
+
+        // extract text
+        const data = await pdf(buffer);
 
         // const retriever = await initRetriever();
 

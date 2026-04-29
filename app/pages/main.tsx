@@ -1,5 +1,6 @@
 'use client'
 
+import { stringify } from "querystring";
 import { useState, useRef, useEffect, useCallback } from "react";
 
 type MessageType = 'system' | 'user' | 'assistant';
@@ -39,7 +40,7 @@ export default function PDFChat() {
   }, []);
 
   // Upload PDF to backend
-  async function uploadPDF(selectedFile: File) {
+  async function uploadPDF(selectedFile:File) {
     setFile(selectedFile);
     setUploadingStatus("Uploading...");
     setPdfReady(false);
@@ -47,9 +48,13 @@ export default function PDFChat() {
 
     appendMessage('system', `📄 Importing: ${selectedFile.name}`);
 
+    
+
     try {
       const formData = new FormData();
       formData.append("pdf", selectedFile);
+
+      console.log(formData)
 
       const res = await fetch("http://localhost:4000/upload", {
         method: "POST",
@@ -60,6 +65,7 @@ export default function PDFChat() {
 
       setUploadingStatus("Processing PDF...");
 
+      console.log(res);
       // Poll for ready status
       const interval = setInterval(async () => {
         try {
@@ -116,15 +122,18 @@ export default function PDFChat() {
     }
   }
 
-  function addDoc() {
+  // ADDING PDF DOCS
+  async function  addDoc()  {
     const el = document.createElement("input");
-    el.type = "file";
-    el.accept = "application/pdf";
-    el.onchange = async (e) => {
-      const selectedFile = (e.target as HTMLInputElement).files?.[0];
+    el.setAttribute('type',"file"); // SET TYPE
+    el.setAttribute("accept","application/pdf"); // SET ACCEPT TYPE
+    el.addEventListener("change",async (e)=>  {
+      console.log(el.files?.[0].name)
+      const selectedFile =el.files?.[0];
+      
       if (!selectedFile) return;
       await uploadPDF(selectedFile);
-    };
+    }) 
     el.click();
   }
 

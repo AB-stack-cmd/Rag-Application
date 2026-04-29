@@ -7,5 +7,5 @@ export const connection = new Redis({
 })
 
 // Queue for worker
-export const Query = new Queue("query-connections", { connection});
+export const Query = new Queue("upload_pdf", { connection});
 
