@@ -1,11 +1,33 @@
-import { Redis } from "ioredis";
+import IORedis from "ioredis";
 import { Queue } from "bullmq";
 
-export const connection = new Redis({
-    host: "127.0.0.1",
-    port: 6379
-})
+// 🔥 Proper Redis connection
+export const connection = new IORedis({
+  host: "127.0.0.1",
+  port: 6379,
+  maxRetriesPerRequest: null, // REQUIRED for BullMQ
+  retryStrategy: (times) => Math.min(times * 50, 2000),
+});
 
-// Queue for worker
-export const Query = new Queue("upload_pdf", { connection});
+// 🔍 Debug (very useful)
+connection.on("connect", () => {
+  console.log("✅ Redis connected");
+});
 
+connection.on("error", (err) => {
+  console.error("❌ Redis error:", err);
+});
+
+connection.on("close", () => {
+  console.warn("⚠️ Redis connection closed");
+});
+
+// 🔥 Clear queue name
+export const pdfQueue = new Queue("pdf-queue", {
+  connection,
+});
+
+
+export const testQueue = new Queue("test-queue", {
+  connection,
+});

@@ -1,65 +1,90 @@
 import { Worker } from "bullmq";
 import { PDFLoader } from "@langchain/community/document_loaders/fs/pdf";
-import { GoogleGenerativeAIEmbeddings } from "@langchain/google-genai";
+import { ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings } from "@langchain/google-genai";
 import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
 import { MemoryVectorStore } from "@langchain/classic/vectorstores/memory";
 
+import { connection } from "./connection";
+
 import dotenv from "dotenv";
-import fs from "fs";
 
 dotenv.config();
 
+// ================= EMBEDDINGS =================
 const embeddings = new GoogleGenerativeAIEmbeddings({
-    apiKey: process.env.GOOGLE_API_KEY,
-    model: "gemini-embedding-001",
+  apiKey: process.env.GOOGLE_API_KEY,
+  model: "gemini-embedding-001",
 });
 
-
-// Worker for pdf
+// ================= WORKER =================
 const worker = new Worker(
-  "query-queue",
-     async (job) => {
-        const { filePath } = job.data;
-        console.log(filePath)
+  "upload_pdf",
+   async (job) => {
+    try {
+      const { filePath } = job.data;
 
-        // read file
-        const buffer = fs.readFileSync(filePath);
+      console.log("📄 Processing file:", filePath);
 
-        // extract text
-        const data = await pdf(buffer);
+      if(job.data){
+        return {success : "file uploaded to worker"}
+      }
 
-        // const retriever = await initRetriever();
+      // 1. Load PDF
+      const loader = new PDFLoader(filePath);
+      const docs = await loader.load();
 
-        const docs = await retriever.invoke(query);
-        const context = docs.map(d => d.pageContent).join("\n\n");
+      // 2. Split text
+      const splitter = new RecursiveCharacterTextSplitter({
+        chunkSize: 1000,
+        chunkOverlap: 200,
+      });
 
-        const llm = new ChatGoogleGenerativeAI({
-        apiKey: process.env.GOOGLE_API_KEY,
-        model: "gemini-2.5-flash",
-        });
+      //docs with split
+      const splitDocs = await splitter.splitDocuments(docs);
 
-        const result = await llm.invoke(`
-            Answer ONLY from this context:
+      // 3. Create vector store
+      const vectorStore = await MemoryVectorStore.fromDocuments(
+        splitDocs,
+        embeddings
+      );
 
-            ${context}
+      // 4. Create retriever (optional return info)
+      const retriever = vectorStore.asRetriever(3);
+      
 
-            Question: ${query}
-            `);
+      console.log("✅ PDF processed successfully");
+      console.log(retriever)
 
-        return {
-            answer: result.content,
-            success : true
-            };
-    },
-        {
-            connection: { host: "localhost", port: 6379 },
-        }
+      // Call llm
+      const llm = new ChatGoogleGenerativeAI({
+        model :"gemini-2.5-flash",
+        apiKey:process.env.GOOGLE_API_KEY
+      })
+
+      // LLM result
+      const result = await llm.invoke(` Answer ONLY from this context: ${context} Question: ${query}` );
+
+      // return {
+      //   success: true,
+      //   chunks: splitDocs.length,
+      //   result: result.content,
+      // };
+
+    } catch (err) {
+      console.error("❌ Worker error:", err);
+      throw err;
+    }
+  },
+  {
+    connection: connection,
+  }
 );
 
+// ================= EVENTS =================
 worker.on("completed", (job) => {
-    console.log(`✅ Job ${job.id} completed`);
+  console.log(`✅ Job ${job.id} completed`);
 });
 
 worker.on("failed", (job, err) => {
-    console.error(`❌ Job ${job?.id} failed:`, err);
+  console.error(`❌ Job ${job?.id} failed:`, err);
 });

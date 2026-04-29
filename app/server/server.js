@@ -4,7 +4,7 @@ import multer from "multer";
 import path from "path";
 import fs from "fs";
 
-import { Query } from "./connection";
+import { pdfQueue } from "./connection.js";
 
 const app = express();
 app.use(cors({ origin: "http://localhost:3000" }));
@@ -31,13 +31,16 @@ app.post("/upload", upload.single("pdf"), async (req, res) => {
       return res.status(400).json({ error: "No file uploaded" });
     }
 
-    const job = await Query.add("process-pdf", {
-      filePath: req.file.path,
+    console.log(req.file)
+    const job = await pdfQueue.add("upload_pdf",
+      {
+      filename : req.file.originalname,
+      source : req.file.destination,
+      path : req.file.path,
     });
 
-    // Wait for completion (optional)
-    const result = await job.waitUntilFinished(Query);
-
+    console.log(`Job : ${job.getState()}` )
+ 
     res.json({
       message: "Processed",
       jobId: job.id,
@@ -46,7 +49,7 @@ app.post("/upload", upload.single("pdf"), async (req, res) => {
 
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: "Upload failed" });
+    res.status(500).json({ error:"Error from server" });
   }
 });
 
