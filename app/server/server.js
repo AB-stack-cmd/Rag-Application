@@ -36,6 +36,7 @@ app.post("/upload", upload.single("pdf"), async (req, res) => {
     }
 
     console.log(req.file)
+
     const job = await pdfQueue.add("upload_pdf",
       {
       filename : req.file.originalname,
@@ -48,6 +49,7 @@ app.post("/upload", upload.single("pdf"), async (req, res) => {
     res.json({
       message: "Processed",
       jobId: job.id,
+      ready:true
     });
 
   } catch (err) {
@@ -56,8 +58,8 @@ app.post("/upload", upload.single("pdf"), async (req, res) => {
   }
 });
 
-// ================= STATUS =================
-app.post("/status", async (req, res) => {
+// ================= QUERY =================
+app.post("/query", async (req, res) => {
    try {
 
     const llm = new ChatGoogleGenerativeAI({
@@ -65,8 +67,9 @@ app.post("/status", async (req, res) => {
       apiKey: process.env.GOOGLE_API_KEY,
     });
 
-    const { query } = req.body;
+    const { query :  query } = req.body;
 
+    //Worker store the vector on setVectorStore
     const vectorStore = getVectorStore();
 
     // Retriver from the vectore text
