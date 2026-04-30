@@ -4,6 +4,7 @@ import multer from "multer";
 import path from "path";
 import fs from "fs";
 
+import { getVectorStore } from "./store.js";
 
 import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
 
@@ -42,7 +43,7 @@ app.post("/upload", upload.single("pdf"), async (req, res) => {
       path : req.file.path,
     });
 
-    console.log(`Job : ${job.getState()}` )
+    console.log(`Job : ${await job.getState("completed")}` )
  
     res.json({
       message: "Processed",
@@ -56,14 +57,47 @@ app.post("/upload", upload.single("pdf"), async (req, res) => {
 });
 
 // ================= STATUS =================
-app.get("/job/:id", async (req, res) => {
-  const job = await pdfQueue.getJob(req.params.id);
+app.post("/status", async (req, res) => {
+   try {
 
-  if (!job) return res.json({ status: "not found" });
+    const llm = new ChatGoogleGenerativeAI({
+      model: "gemini-2.5-flash",
+      apiKey: process.env.GOOGLE_API_KEY,
+    });
 
-  const state = await job.getState();
+    const { query } = req.body;
 
-  res.json({ status: state });
+    const vectorStore = getVectorStore();
+
+    // Retriver from the vectore text
+    const retriever = vectorStore.retriever();
+    // add query or promt to embedded model
+    const  result = retriever.invoke(query)
+
+    // Context
+    const context = result.map(d => d.pageContent).join("\n\n");
+
+    if (!vectorStore) {
+      return res.status(400).json({
+        error: "No document processed yet",
+    });
+
+     // 3. LLM
+    const result = await llm.invoke(
+      `Answer ONLY from this context:\n${context}\n\nQuestion: ${query}`
+    );
+
+     res.json({
+      answer: result.content,
+      chunksUsed: docs.length,
+    });
+
+    }}catch(error){
+      res.json({
+        error : "Server Error"
+      })
+    }
+  
 });
 
 app.listen(4000, () => {

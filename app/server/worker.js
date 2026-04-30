@@ -6,6 +6,8 @@ import { MemoryVectorStore } from "@langchain/classic/vectorstores/memory";
 
 import { connection } from "./connection.js";
 
+import { setVectorStore } from "./store.js";
+
 import dotenv from "dotenv";
 import { concat } from "@langchain/core/utils/stream";
 
@@ -22,7 +24,7 @@ const worker = new Worker(
   "upload_pdf",
    async (job) => {
     try {
-      const { fileData } = job.data;
+      const { path : fileData } = job.data;
 
       // const filePath = fileData.path;
       // console.log(filePath)
@@ -33,7 +35,7 @@ const worker = new Worker(
 
     
       // 1. Load PDF
-      const loader = new PDFLoader(filePath);
+      const loader = new PDFLoader(fileData);
       const docs = await loader.load();
 
       // 2. Split text
@@ -53,8 +55,10 @@ const worker = new Worker(
         embeddings
       );
 
-      const retriever = vectorStore.asRetriever(3);
-      console.log(`Rretriver : ${retriever}`)
+      
+      const retriever = vectorStore.asRetriever();
+      setVectorStore(retriever)
+      console.log(await retriever.invoke("what is the docs about ?"));    
       
 //////////////////////////////////////////////////////////
       // 4. Create retriever (optional return info)
