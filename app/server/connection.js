@@ -23,11 +23,11 @@ connection.on("close", () => {
 });
 
 // 🔥 Clear queue name
-export const pdfQueue = new Queue("pdf-queue", {
+export const pdfQueue = new Queue("upload_pdf", {
   connection,
 });
 
 
-export const testQueue = new Queue("test-queue", {
+export const testQueue = new Queue("demo", {
   connection,
 });

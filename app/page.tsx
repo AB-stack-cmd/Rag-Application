@@ -7,8 +7,8 @@ import App from "./pages/test";
 export default function Home() {
   return (
     <div>
-      {/* <Main/> */}
-      <App/>
+      <Main/>
+      {/* <App/> */}
     </div>
   );
 }

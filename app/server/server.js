@@ -4,6 +4,9 @@ import multer from "multer";
 import path from "path";
 import fs from "fs";
 
+
+import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
+
 import { pdfQueue } from "./connection.js";
 
 const app = express();
@@ -44,7 +47,6 @@ app.post("/upload", upload.single("pdf"), async (req, res) => {
     res.json({
       message: "Processed",
       jobId: job.id,
-      result,
     });
 
   } catch (err) {
