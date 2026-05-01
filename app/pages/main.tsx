@@ -70,6 +70,7 @@ export default function PDFChat() {
       const interval = setInterval(async () => {
         try {
           const statusRes = await fetch("http://localhost:4000/status");
+          console.log(``)
           const data = await statusRes.json();
           if (data.ready) {
             clearInterval(interval);

@@ -44,7 +44,8 @@ app.post("/upload", upload.single("pdf"), async (req, res) => {
       path : req.file.path,
     });
 
-    console.log(`Job : ${await job.getState("completed")}` )
+    console.log(`Job : ${job.id} ` )
+  
  
     res.json({
       message: "Processed",
@@ -97,11 +98,58 @@ app.post("/query", async (req, res) => {
 
     }}catch(error){
       res.json({
-        error : "Server Error"
+        error : "Vector error"
       })
     }
   
 });
+
+//======================== STATUS============================
+
+
+app.get("/status/:id", async (req, res) => {
+  try {
+    const jobId = req.params.id;
+
+    const job = await pdfQueue.getJob(jobId);
+
+    if (!job) {
+      return res.status(404).json({
+        ready: false,
+        status: "not_found",
+      });
+    }
+
+    const state = await job.getState();
+
+    let result = null;
+
+    if (state === "completed") {
+      result = job.returnvalue; // 🔥 worker return
+    }
+
+    if (state === "failed") {
+      return res.json({
+        ready: false,
+        status: "failed",
+        error: job.failedReason,
+      });
+    }
+
+    res.json({
+      ready: state === "completed",
+      status: state,
+      result,
+    });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({
+      error: "Internal server error",
+    });
+  }
+});
+
 
 app.listen(4000, () => {
   console.log("Server running on http://localhost:4000");
