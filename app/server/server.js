@@ -3,13 +3,16 @@ import cors from "cors";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
+import { MemoryVectorStore } from "@langchain/classic/vectorstores/memory";
 
 import { getVectorStore } from "./store.js";
 
-import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
+import { ChatGoogleGenerativeAI,GoogleGenerativeAIEmbeddings } from "@langchain/google-genai";
 
 import { pdfQueue } from "./connection.js";
 import router from "./api/query_route.js";
+
+import { QdrantVectorStore } from "@langchain/qdrant";
 
 const app = express();
 app.use(cors({ origin: "http://localhost:3000" }));

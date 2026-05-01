@@ -1,89 +1,88 @@
-import { Worker , Queue } from "bullmq";
+import { Worker, Queue } from "bullmq";
 import { PDFLoader } from "@langchain/community/document_loaders/fs/pdf";
-import { ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings } from "@langchain/google-genai";
+import { GoogleGenerativeAIEmbeddings } from "@langchain/google-genai";
 import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
-import { MemoryVectorStore } from "@langchain/classic/vectorstores/memory";
+import { QdrantVectorStore } from "@langchain/qdrant";
 
 import { connection } from "./connection.js";
-
-
-import { setVectorStore } from "./store.js";
-
 import dotenv from "dotenv";
-import { concat } from "@langchain/core/utils/stream";
 
+import { qdrantClient } from "./qdrant.js";
 dotenv.config();
 
-
-
-//For Failed pdf
-
-const failedQueue = new Queue("failed_pdf", { connection });
-
-// ================= EMBEDDINGS =================
+// ✅ FIXED embeddings
 const embeddings = new GoogleGenerativeAIEmbeddings({
   apiKey: process.env.GOOGLE_API_KEY,
   model: "gemini-embedding-001",
 });
 
-// ================= WORKER =================
+// DLQ
+const failedQueue = new Queue("failed_pdf", { connection });
+
 const worker = new Worker(
   "upload_pdf",
-   async (job) => {
+  async (job) => {
     try {
       job.updateProgress(10);
-      //Path of the file
-      const { path : fileData } = job.data;
 
-      console.log("📄 Processing file:", fileData);
+      const { path: filePath } = job.data;
 
-    
+      console.log("📄 Processing:", filePath);
+
       // 1. Load PDF
-      const loader = new PDFLoader(fileData);
+      const loader = new PDFLoader(filePath);
       const docs = await loader.load();
 
       job.updateProgress(30);
-      // 2. Spliter
+
+      // 2. Split
       const splitter = new RecursiveCharacterTextSplitter({
-        chunkSize: 1000,
-        chunkOverlap: 200,
+        chunkSize: 800,
+        chunkOverlap: 150,
       });
 
-      //Split the docs
       const splitDocs = await splitter.splitDocuments(docs);
 
-      // console.log(`Splited docs : ${splitDocs}`)
-
       job.updateProgress(60);
-      // 3. Create vector store
-      const vectorStore = await MemoryVectorStore.fromDocuments(
+
+      // 3. Create unique collection per job
+      const collectionName = job.id;
+
+      // 4. Store vectors in Qdrant
+      await QdrantVectorStore.fromDocuments(
         splitDocs,
-        embeddings
+        embeddings,
+        {
+          client:qdrantClient,
+          collectionName,
+        }
       );
 
-      //Retrive the vector text from vector store
-      const retriever = vectorStore.asRetriever();
-      setVectorStore(retriever)
-      // console.log(await retriever.invoke("what is the docs about ?"));    
+      console.log("✅ Stored in Qdrant:", collectionName);
 
       job.updateProgress(100);
+
       return {
         success: true,
+        collectionName,   // 🔥 IMPORTANT (used by API)
         chunks: splitDocs.length,
-        jobId : job.id
       };
 
     } catch (err) {
       console.error("❌ Worker error:", err);
+
+      await failedQueue.add("failed", {
+        jobId: job.id,
+        error: err.message,
+      });
+
       throw err;
     }
   },
-  {
-    connection: connection,
-  }
+  { connection }
 );
 
-// ================= EVENTS =================
+// EVENTS
 worker.on("completed", (job) => {
   console.log(`✅ Job ${job.id} completed`);
 });

@@ -1,91 +1,101 @@
 import express from "express";
-import { getVectorStore } from "../store.js";
-import {
-  GoogleGenerativeAIEmbeddings,
-  ChatGoogleGenerativeAI,
-} from "@langchain/google-genai";
+import { QdrantVectorStore } from "@langchain/qdrant";
+import { GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI } from "@langchain/google-genai";
 
 import { pdfQueue } from "../connection.js";
+import { qdrantClient } from "../qdrant.js";
 
 const router = express.Router();
 
+// ✅ embeddings (must match worker)
+const embeddings = new GoogleGenerativeAIEmbeddings({
+  apiKey: process.env.GOOGLE_API_KEY,
+  model: "models/embedding-001",
+});
+
+// ================= QUERY =================
 router.post("/query/:id", async (req, res) => {
   try {
     const jobId = req.params.id;
     const { query } = req.body;
 
+    // 1. Validate input
     if (!query) {
-      return res.status(400).json({ error: "Query required" });
+      return res.status(400).json({ error: "Query is required" });
     }
 
-    console.log("📩 Query:", query);
-    console.log("📦 JobId:", jobId);
-
-    // 🔹 Get job
+    // 2. Get job from queue
     const job = await pdfQueue.getJob(jobId);
 
     if (!job) {
-      return res.status(404).json({ error: "Invalid jobId" });
+      return res.status(404).json({ error: "Job not found" });
     }
 
     const state = await job.getState();
 
     if (state !== "completed") {
       return res.status(400).json({
-        error: "Document not ready yet",
+        error: "PDF not processed yet",
+        status: state,
       });
     }
 
+    // 3. Get collection name from worker return
     const { collectionName } = job.returnvalue;
 
-    // 🔹 Embeddings
-    const embeddings = new GoogleGenerativeAIEmbeddings({
-      apiKey: process.env.GOOGLE_API_KEY,
-    });
+    if (!collectionName) {
+      return res.status(500).json({
+        error: "Collection not found (worker issue)",
+      });
+    }
 
-    // 🔹 Load Qdrant collection
-    const vectorStore = await QdrantVectorStore.fromExistingCollection(embeddings, {
-        client: qdrantClient,
+    // 4. Load vector store (READ from Qdrant)
+    const vectorStore =
+      await QdrantVectorStore.fromExistingCollection(embeddings, {
+        url:  qdrantClient,
         collectionName,
       });
 
-    // 🔹 Retriever
-    const retriever = vectorStore.asRetriever(3);
+    const retriever = vectorStore.asRetriever({ k: 3 });
 
-    // 🔹 Get relevant docs
+    // 5. Retrieve context
     const docs = await retriever.invoke(query);
+    console.log(`Retriver : ${docs}`)
+
+    if (!docs || docs.length === 0) {
+      return res.json({
+        answer: "No relevant context found in document.",
+      });
+    }
 
     const context = docs.map((d) => d.pageContent).join("\n\n");
 
-    console.log("📄 Context:", context.slice(0, 200));
+    console.log("📄 Context retrieved:", context.slice(0, 200));
 
-    // 🔹 LLM
+    // 6. LLM
     const llm = new ChatGoogleGenerativeAI({
       model: "gemini-2.5-flash",
       apiKey: process.env.GOOGLE_API_KEY,
     });
 
-    const response = await llm.invoke(`
-        Answer ONLY using this context.
-        If answer not found, say "I don't know".
+    const result = await llm.invoke(
+      `Answer ONLY from this context:\n${context}\n\nQuestion: ${query}`
+    );
 
-        Context:
-        ${context}
-
-        Question:
-        ${query}
-        `);
-
+    console.log(`Result from query : ${result}`)
+    // 7. Response
     res.json({
-      answer: response.content,
+      answer: result.content,
       chunksUsed: docs.length,
+      jobId,
     });
 
-  } catch (error) {
-    console.error("❌ Query error:", error);
+  } catch (err) {
+    console.error("❌ Query error:", err);
 
     res.status(500).json({
       error: "Query failed",
+      details: err.message,
     });
   }
 });
