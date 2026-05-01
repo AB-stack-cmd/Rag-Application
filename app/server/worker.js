@@ -1,4 +1,4 @@
-import { Worker } from "bullmq";
+import { Worker , Queue } from "bullmq";
 import { PDFLoader } from "@langchain/community/document_loaders/fs/pdf";
 import { ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings } from "@langchain/google-genai";
 import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
@@ -6,12 +6,19 @@ import { MemoryVectorStore } from "@langchain/classic/vectorstores/memory";
 
 import { connection } from "./connection.js";
 
+
 import { setVectorStore } from "./store.js";
 
 import dotenv from "dotenv";
 import { concat } from "@langchain/core/utils/stream";
 
 dotenv.config();
+
+
+
+//For Failed pdf
+
+const failedQueue = new Queue("failed_pdf", { connection });
 
 // ================= EMBEDDINGS =================
 const embeddings = new GoogleGenerativeAIEmbeddings({
@@ -24,6 +31,7 @@ const worker = new Worker(
   "upload_pdf",
    async (job) => {
     try {
+      job.updateProgress(10);
       //Path of the file
       const { path : fileData } = job.data;
 
@@ -34,6 +42,7 @@ const worker = new Worker(
       const loader = new PDFLoader(fileData);
       const docs = await loader.load();
 
+      job.updateProgress(30);
       // 2. Spliter
       const splitter = new RecursiveCharacterTextSplitter({
         chunkSize: 1000,
@@ -45,6 +54,7 @@ const worker = new Worker(
 
       // console.log(`Splited docs : ${splitDocs}`)
 
+      job.updateProgress(60);
       // 3. Create vector store
       const vectorStore = await MemoryVectorStore.fromDocuments(
         splitDocs,
@@ -56,6 +66,7 @@ const worker = new Worker(
       setVectorStore(retriever)
       // console.log(await retriever.invoke("what is the docs about ?"));    
 
+      job.updateProgress(100);
       return {
         success: true,
         chunks: splitDocs.length,

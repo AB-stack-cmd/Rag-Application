@@ -27,6 +27,7 @@ export default function PDFChat() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+  const[jobId , setJobId] = useState()
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, []);
@@ -61,6 +62,15 @@ export default function PDFChat() {
         body: formData,
       });
 
+      const response  = await res.json()
+      console.log(`Response from upload route : ${response}`)
+      const new_jobId = response.jobId
+      setJobId(new_jobId)
+
+      console.log(`Job Id ${jobId}`)
+
+      // setJobId(response.JobId)
+
       if (!res.ok) throw new Error(`Upload failed: ${res.statusText}`);
 
       setUploadingStatus("Processing PDF...");
@@ -69,8 +79,8 @@ export default function PDFChat() {
       // Poll for ready status
       const interval = setInterval(async () => {
         try {
-          const statusRes = await fetch("http://localhost:4000/status");
-          console.log(``)
+          const statusRes = await fetch(`http://localhost:4000/status/${jobId}`);
+          
           const data = await statusRes.json();
           if (data.ready) {
             clearInterval(interval);
@@ -102,7 +112,7 @@ export default function PDFChat() {
     if (textareaRef.current) textareaRef.current.style.height = 'auto';
 
     try {
-      const res = await fetch("http://localhost:4000/query", {
+      const res = await fetch(`http://localhost:4000/query/${jobId}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ query, history: updatedHistory }),

@@ -9,6 +9,7 @@ import { getVectorStore } from "./store.js";
 import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
 
 import { pdfQueue } from "./connection.js";
+import router from "./api/query_route.js";
 
 const app = express();
 app.use(cors({ origin: "http://localhost:3000" }));
@@ -68,18 +69,29 @@ app.post("/query", async (req, res) => {
       apiKey: process.env.GOOGLE_API_KEY,
     });
 
-    const { query :  query } = req.body;
+    const { query :  query , jobId } = req.body;
+
+    console.log(query)
 
     //Worker store the vector on setVectorStore
     const vectorStore = getVectorStore();
+    if(!vectorStore){
+      console.log("No vector Store")
+    }
+    console.log(vectorStore)
 
     // Retriver from the vectore text
     const retriever = vectorStore.retriever();
-    // add query or promt to embedded model
+    if(!retriever){
+      console.log()
+    }
+    // Query to restive relevent test from vector
     const  result = retriever.invoke(query)
 
     // Context
     const context = result.map(d => d.pageContent).join("\n\n");
+
+    console.log(`Context : ${context}`)
 
     if (!vectorStore) {
       return res.status(400).json({
@@ -90,6 +102,8 @@ app.post("/query", async (req, res) => {
     const result = await llm.invoke(
       `Answer ONLY from this context:\n${context}\n\nQuestion: ${query}`
     );
+
+    console.log(result)
 
      res.json({
       answer: result.content,
@@ -119,13 +133,14 @@ app.get("/status/:id", async (req, res) => {
         status: "not_found",
       });
     }
-
+    // Checks job state (completed or failed)
     const state = await job.getState();
 
     let result = null;
 
     if (state === "completed") {
-      result = job.returnvalue; // 🔥 worker return
+      result = job.returnvalue; // worker return response
+      console.log(result)
     }
 
     if (state === "failed") {
@@ -137,8 +152,8 @@ app.get("/status/:id", async (req, res) => {
     }
 
     res.json({
-      ready: state === "completed",
-      status: state,
+      ready: true,
+      jobId : job.id,
       result,
     });
 
@@ -150,6 +165,8 @@ app.get("/status/:id", async (req, res) => {
   }
 });
 
+// route frpm api
+app.use("/api", router);
 
 app.listen(4000, () => {
   console.log("Server running on http://localhost:4000");
