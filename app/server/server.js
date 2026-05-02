@@ -141,6 +141,10 @@ app.get("/status/:id", async (req, res) => {
         status: "not_found",
       });
     }
+
+    //progess from worker
+    const progess =  job.progress;
+    console.log(progess)
     // Checks job state (completed or failed)
     const state = await job.getState();
 
@@ -163,6 +167,7 @@ app.get("/status/:id", async (req, res) => {
       ready: true,
       jobId : job.id,
       result,
+      progess
     });
 
   } catch (err) {
