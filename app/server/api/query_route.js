@@ -89,7 +89,7 @@ router.post("/query/:id", async (req, res) => {
     console.log(`Result from query : ${result.content}`)
     // 7. Response
     res.json({
-      answer: result.content,
+      answer: result.content.answer,
       chunksUsed: docs.length,
       jobId,
     });
