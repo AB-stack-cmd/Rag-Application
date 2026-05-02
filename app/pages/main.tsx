@@ -219,7 +219,7 @@ export default function PDFChat() {
           onMouseLeave={e => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.transform = 'translateY(0)'; }}
         >
           ⬆ Import PDF
-        </button>
+        </button >
       </div>
 
       {/* ── File bar ── */}

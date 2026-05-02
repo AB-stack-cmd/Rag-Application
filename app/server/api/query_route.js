@@ -5,17 +5,21 @@ import { GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI } from "@langchain
 import { pdfQueue } from "../connection.js";
 import { qdrantClient } from "../qdrant.js";
 
+import dotenv from "dotenv";
+dotenv.config();
+
 const router = express.Router();
 
 // ✅ embeddings (must match worker)
 const embeddings = new GoogleGenerativeAIEmbeddings({
   apiKey: process.env.GOOGLE_API_KEY,
-  model: "models/embedding-001",
+  model: "gemini-embedding-001",
 });
 
 // ================= QUERY =================
 router.post("/query/:id", async (req, res) => {
   try {
+    console.log("server working")
     const jobId = req.params.id;
     const { query } = req.body;
 
@@ -52,7 +56,7 @@ router.post("/query/:id", async (req, res) => {
     // 4. Load vector store (READ from Qdrant)
     const vectorStore =
       await QdrantVectorStore.fromExistingCollection(embeddings, {
-        url:  qdrantClient,
+        client: qdrantClient,
         collectionName,
       });
 
@@ -82,7 +86,7 @@ router.post("/query/:id", async (req, res) => {
       `Answer ONLY from this context:\n${context}\n\nQuestion: ${query}`
     );
 
-    console.log(`Result from query : ${result}`)
+    console.log(`Result from query : ${result.content}`)
     // 7. Response
     res.json({
       answer: result.content,

@@ -13,7 +13,9 @@ import { pdfQueue } from "./connection.js";
 import router from "./api/query_route.js";
 
 import { QdrantVectorStore } from "@langchain/qdrant";
+import dotenv from "dotenv"
 
+dotenv.config()
 const app = express();
 app.use(cors({ origin: "http://localhost:3000" }));
 app.use(express.json());
@@ -126,6 +128,9 @@ app.post("/query", async (req, res) => {
 
 app.get("/status/:id", async (req, res) => {
   try {
+
+    
+  
     const jobId = req.params.id;
 
     const job = await pdfQueue.getJob(jobId);
