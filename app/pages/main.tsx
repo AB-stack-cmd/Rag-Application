@@ -28,6 +28,8 @@ export default function PDFChat() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const[jobId , setJobId] = useState()
+  console.log(`JOB IDS : ${jobId}`)
+
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, []);
@@ -63,9 +65,9 @@ export default function PDFChat() {
       });
 
       const response  = await res.json()
-      console.log(`Response from upload route : ${response}`)
+      console.log(`Response from upload route : ${response.message} jobId : ${response.jobId}`)
       const new_jobId = response.jobId
-      setJobId(new_jobId)
+      setJobId(response.jobId)
 
       console.log(`Job Id ${jobId}`)
 
@@ -79,7 +81,7 @@ export default function PDFChat() {
       // Poll for ready status
       const interval = setInterval(async () => {
         try {
-          const statusRes = await fetch(`http://localhost:4000/status/${jobId}`);
+          const statusRes = await fetch(`http://localhost:4000/status/${response.jobId}`);
           
           const data = await statusRes.json();
           if (data.ready) {
@@ -112,7 +114,7 @@ export default function PDFChat() {
     if (textareaRef.current) textareaRef.current.style.height = 'auto';
 
     try {
-      const res = await fetch(`http://localhost:4000/query/${jobId}`, {
+      const res = await fetch(`http://localhost:4000/api/query/${jobId}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ query, history: updatedHistory }),

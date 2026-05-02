@@ -64,7 +64,7 @@ const worker = new Worker(
 
       return {
         success: true,
-        collectionName,   // 🔥 IMPORTANT (used by API)
+        collectionName,   //  (used by API)
         chunks: splitDocs.length,
       };
 

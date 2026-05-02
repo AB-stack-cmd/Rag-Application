@@ -30,7 +30,7 @@ router.post("/query/:id", async (req, res) => {
     if (!job) {
       return res.status(404).json({ error: "Job not found" });
     }
-
+    // State from worker
     const state = await job.getState();
 
     if (state !== "completed") {
