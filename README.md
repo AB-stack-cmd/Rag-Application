@@ -219,10 +219,11 @@ REDIS_PORT=6379
 
 ---
 
-### 4. Start Redis
+### 4. Start Redis and QdrantDB
 
 ```bash
 docker run -p 6379:6379 redis
+docker run -p 6333:6333 qdrant/qdrant
 ```
 
 ---
