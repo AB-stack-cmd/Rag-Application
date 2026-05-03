@@ -65,64 +65,6 @@ app.post("/upload", upload.single("pdf"), async (req, res) => {
   }
 });
 
-// ================= QUERY =================
-app.post("/query", async (req, res) => {
-   try {
-
-    const llm = new ChatGoogleGenerativeAI({
-      model: "gemini-2.5-flash",
-      apiKey: process.env.GOOGLE_API_KEY,
-    });
-
-    const { query :  query , jobId } = req.body;
-
-    console.log(query)
-
-    //Worker store the vector on setVectorStore
-    const vectorStore = getVectorStore();
-    if(!vectorStore){
-      console.log("No vector Store")
-    }
-    console.log(vectorStore)
-
-    // Retriver from the vectore text
-    const retriever = vectorStore.retriever();
-    if(!retriever){
-      console.log()
-    }
-    // Query to restive relevent test from vector
-    const  result = retriever.invoke(query)
-
-    // Context
-    const context = result.map(d => d.pageContent).join("\n\n");
-
-    console.log(`Context : ${context}`)
-
-    if (!vectorStore) {
-      return res.status(400).json({
-        error: "No document processed yet",
-    });
-
-     // 3. LLM
-    const result = await llm.invoke(
-      `Answer ONLY from this context:\n${context}\n\nQuestion: ${query}`
-    );
-
-    console.log(result)
-
-     res.json({
-      answer: result.content,
-      chunksUsed: docs.length,
-    });
-
-    }}catch(error){
-      res.json({
-        error : "Vector error"
-      })
-    }
-  
-});
-
 //======================== STATUS============================
 
 
@@ -178,7 +120,7 @@ app.get("/status/:id", async (req, res) => {
   }
 });
 
-// route frpm api
+//========================== QUERY =====================================  
 app.use("/api", router);
 
 app.listen(4000, () => {

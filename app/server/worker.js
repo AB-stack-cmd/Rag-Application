@@ -11,7 +11,6 @@ import { qdrantClient } from "./qdrant.js";
 dotenv.config();
 
 
-new Promise()
 // ✅ FIXED embeddings
 const embeddings = new GoogleGenerativeAIEmbeddings({
   apiKey: process.env.GOOGLE_API_KEY,

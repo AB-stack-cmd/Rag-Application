@@ -6,6 +6,7 @@ import { pdfQueue } from "../connection.js";
 import { qdrantClient } from "../qdrant.js";
 
 import dotenv from "dotenv";
+import { text } from "stream/consumers";
 dotenv.config();
 
 const router = express.Router();
@@ -82,18 +83,63 @@ router.post("/query/:id", async (req, res) => {
       apiKey: process.env.GOOGLE_API_KEY,
     });
 
-    const result = await llm.invoke(
-      `Answer ONLY from this context:\n${context}\n\nQuestion: ${query}`
+    res.setHeader("Content-Type", "text/plain");
+    res.setHeader("Transfer-Encoding", "chunked");
+    res.setHeader("Connection", "keep-alive");
+
+    res.write(
+      JSON.stringify({
+        type: "meta",
+        chunksUsed: docs.length,
+        jobId,
+      }) + "\n"
     );
 
-    console.log(`Result from query : ${result.content}`)
-    // 7. Response
-    res.json({
-      answer: result.content.answer,
-      chunksUsed: docs.length,
-      jobId,
-    });
+    const result = await llm.stream(
+      ` Answer ONLY from this context:\n${context}\n\nQuestion: ${query}
+        Return response in Markdown format with proper bullet points and headings.
+        DoNOT use raw asterisk lists without structure.`
+    );
 
+    try {
+      for await (const chunk of result) {
+        const text = chunk.content || "";
+
+        if (!text) continue;
+
+        fullText += text;
+
+        // send token event
+        res.write(
+          JSON.stringify({
+            type: "token",
+            content: text,
+          }) + "\n"
+        );
+      }
+
+      // final event
+      res.write(
+        JSON.stringify({
+          type: "done",
+          length: fullText.length,
+        }) + "\n"
+      );
+
+      res.end();
+
+    } catch (err) {
+      console.error("Stream error:", err);
+
+      res.write(
+        JSON.stringify({
+          type: "error",
+          message: "Streaming failed",
+        }) + "\n"
+      );
+
+      res.end();
+}
   } catch (err) {
     console.error("❌ Query error:", err);
 

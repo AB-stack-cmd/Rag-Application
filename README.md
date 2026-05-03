@@ -112,7 +112,7 @@ A dedicated vector database is used instead of in-memory storage:
 Each uploaded document is stored in its own collection:
 
 ```js
-const collectionName = `pdf_${job.id}`;
+const collectionName = job.id;
 ```
 
 Benefits:
@@ -192,7 +192,7 @@ POST /api/query/:id
 
 ```bash
 git clone https://github.com/AB-stack-cmd/Rag-Application.git
-cd Rad-Application
+cd Rag-Application
 ```
 
 ---

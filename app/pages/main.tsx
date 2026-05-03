@@ -47,41 +47,77 @@ export default function Main() {
   }
 
   // ================= STREAMING CHAT =================
-  async function sendMessage() {
-    if (!input.trim() || !pdfReady) return;
+ async function sendMessage() {
+  if (!input.trim() || !pdfReady) return;
 
-    const userMsg: Message = { role: "user", content: input };
-    setMessages((prev) => [...prev, userMsg]);
-    setInput("");
-    setLoading(true);
-    setStreamingMsg("");
+  const userQuery = input;
 
-    const res = await fetch(`http://localhost:4000/api/query/${jobId}`, {
+  setMessages((prev) => [
+    ...prev,
+    { role: "user", content: userQuery },
+  ]);
+
+  setInput("");
+  setLoading(true);
+  setStreamingMsg("");
+
+  const res = await fetch(
+    `http://localhost:4000/api/query/${jobId}`,
+    {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ query: input }),
-    });
-
-    const reader = res.body?.getReader();
-    const decoder = new TextDecoder();
-
-    let done = false;
-    let finalText = "";
-
-    while (!done && reader) {
-      const { value, done: doneReading } = await reader.read();
-      done = doneReading;
-
-      const chunk = decoder.decode(value || new Uint8Array());
-      finalText += chunk;
-      setStreamingMsg(finalText);
+      body: JSON.stringify({ query: userQuery }),
     }
+  );
 
-    setMessages((prev) => [...prev, { role: "assistant", content: finalText }]);
-    setStreamingMsg("");
-    setLoading(false);
+  if (!res.body) return;
+  
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+
+  let buffer = "";
+  let finalText = "";
+
+  while (true) {
+    const { value, done } = await reader.read();
+    console.log(`Value : ${value} 
+                 done  : ${done} `)
+    if (done) break;
+
+    // decode the array 
+    buffer += decoder.decode(value, { stream: true });
+
+    const lines = buffer.split("\n");
+    console.log(`Line  : ${lines}`);
+    buffer = lines.pop() || "";
+
+    for (const line of lines) {
+      if (!line.trim()) continue;
+
+      try {
+        const event = JSON.parse(line);
+
+        if (event.type === "token") {
+          finalText += event.content;
+          setStreamingMsg(finalText);
+        }
+
+        if (event.type === "done") {
+          setMessages((prev) => [
+            ...prev,
+            { role: "assistant", content: finalText },
+          ]);
+        }
+      } catch (e) {
+        console.error("Stream parse error:", e);
+      }
+    }
   }
 
+  setStreamingMsg("");
+  setLoading(false);
+}
   return (
     <div className="flex h-screen bg-black text-white">
 
