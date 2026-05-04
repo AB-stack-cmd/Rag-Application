@@ -35,6 +35,8 @@ router.post("/query/:id", async (req, res) => {
     if (!job) {
       return res.status(404).json({ error: "Job not found" });
     }
+    //
+    const start = new Date.now()
     // State from worker
     const state = await job.getState();
 
@@ -101,7 +103,10 @@ router.post("/query/:id", async (req, res) => {
         DoNOT use raw asterisk lists without structure.`
     );
     let fullText = null
-    
+
+    // LATENCY
+    const latency = new Date.now() - start
+
     try {
       for await (const chunk of result) {
         const text = chunk.content || "";
@@ -113,6 +118,7 @@ router.post("/query/:id", async (req, res) => {
           JSON.stringify({
             type: "token",
             content: text,
+            latency:latency
           }) + "\n"
         );
       }
