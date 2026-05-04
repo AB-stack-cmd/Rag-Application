@@ -19,6 +19,7 @@ export default function Main() {
   const [jobId, setJobId] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [fileName, setFileName] = useState("");
+  const [latencyMetrics , setLatencyMetrics] = useState({})
 
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -58,6 +59,13 @@ export default function Main() {
 
   // ================= STREAM =================
   async function sendMessage() {
+
+    const clientStart = performance.now();
+
+    let firstTokenAt = 0;
+    let lastTokenAt = 0;
+    let meta: any = null;
+
     if (!input.trim() || !pdfReady) return;
 
     const userQuery = input;
@@ -81,6 +89,7 @@ export default function Main() {
 
     let buffer = "";
     let finalText = "";
+    let letency = ""
 
     while (true) {
       const { value, done } = await reader.read();
@@ -98,17 +107,45 @@ export default function Main() {
           const event = JSON.parse(line);
 
           if (event.type === "token") {
+            if (!firstTokenAt) {
+                  firstTokenAt = performance.now();
+                }
             finalText += event.content;
             setStreamingMsg(finalText);
+            lastTokenAt = performance.now();
           }
 
           if (event.type === "done") {
+            const clientEnd =  performance.now()
+
+            const metrics = {
+              totalClientLatency: clientEnd - clientStart,
+              timeToFirstToken: firstTokenAt - clientStart,
+              streamingDuration: lastTokenAt - firstTokenAt,
+              backendTotal: event.metrics.totalTime,
+              retrieval: event.metrics.retrievalTime,
+              llm: event.metrics.llmTime
+            };
             setMessages(prev => [
               ...prev,
               { role: "assistant", content: finalText },
             ]);
             setStreamingMsg("");
             setLoading(false);
+
+            setLatencyMetrics(metrics);
+
+
+            console.log("\n🧾 ===== CLIENT METRICS =====");
+            console.log("🌐 Total Client Latency:", metrics.totalClientLatency.toFixed(2), "ms");
+            console.log("⚡ Time to First Token:", metrics.timeToFirstToken.toFixed(2), "ms");
+            console.log("📡 Streaming Duration:", metrics.streamingDuration.toFixed(2), "ms");
+
+            console.log("🧠 Backend Total:", event.metrics.totalTime, "ms");
+            console.log("📄 Retrieval:", event.metrics.retieverend, "ms");
+            console.log("🤖 LLM:", event.metrics.llmTime, "ms");
+            console.log("================================\n");
+                      
           }
 
         } catch (e) {

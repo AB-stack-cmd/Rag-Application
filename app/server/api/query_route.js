@@ -17,8 +17,14 @@ const embeddings = new GoogleGenerativeAIEmbeddings({
   model: "gemini-embedding-001",
 });
 
+const llm = new ChatGoogleGenerativeAI({
+      model: "gemini-2.5-flash",
+      apiKey: process.env.GOOGLE_API_KEY,
+});
+
 // ================= QUERY =================
 router.post("/query/:id", async (req, res) => {
+  const totalstart  = Date.now()
   try {
     console.log("server working")
     const jobId = req.params.id;
@@ -36,7 +42,7 @@ router.post("/query/:id", async (req, res) => {
       return res.status(404).json({ error: "Job not found" });
     }
     //
-    const start = new Date.now()
+    const start =  Date.now()
     // State from worker
     const state = await job.getState();
 
@@ -56,6 +62,7 @@ router.post("/query/:id", async (req, res) => {
       });
     }
 
+    const retriverstart =  Date.now()
     // 4. Load vector store (READ from Qdrant)
     const vectorStore =
       await QdrantVectorStore.fromExistingCollection(embeddings, {
@@ -63,7 +70,7 @@ router.post("/query/:id", async (req, res) => {
         collectionName,
       });
 
-    const retriever = vectorStore.asRetriever({ k: 3 });
+    const retriever = vectorStore.asRetriever({ k: 2 });
 
     // 5. Retrieve context
     const docs = await retriever.invoke(query);
@@ -74,16 +81,12 @@ router.post("/query/:id", async (req, res) => {
         answer: "No relevant context found in document.",
       });
     }
+    // Retriver
+    const retieverend =  Date.now() - retriverstart
 
-    const context = docs.map((d) => d.pageContent).join("\n\n");
+    const context = docs.map((d) => d.pageContent).join("\n\n").slice(0,1500);
 
     console.log("📄 Context retrieved:", context.slice(0, 200));
-
-    // 6. LLM
-    const llm = new ChatGoogleGenerativeAI({
-      model: "gemini-2.5-flash",
-      apiKey: process.env.GOOGLE_API_KEY,
-    });
 
     res.setHeader("Content-Type", "text/plain");
     res.setHeader("Transfer-Encoding", "chunked");
@@ -94,9 +97,11 @@ router.post("/query/:id", async (req, res) => {
         type: "meta",
         chunksUsed: docs.length,
         jobId,
+        serverstart : totalstart
       }) + "\n"
     );
-
+    // 6. LLM
+    const llmstart = Date.now();
     const result = await llm.stream(
       ` Answer ONLY from this context:\n${context}\n\nQuestion: ${query}
         Return response in Markdown format with proper bullet points and headings.
@@ -105,7 +110,7 @@ router.post("/query/:id", async (req, res) => {
     let fullText = null
 
     // LATENCY
-    const latency = new Date.now() - start
+    const latency =  Date.now() - start
 
     try {
       for await (const chunk of result) {
@@ -123,11 +128,19 @@ router.post("/query/:id", async (req, res) => {
         );
       }
 
+     const llmTime = Date.now() - llmstart;
+     const totalTime = Date.now() - totalstart;
       // final event
       res.write(
         JSON.stringify({
           type: "done",
           length: fullText.length,
+          metrics:{
+            totalstart,
+            llmTime,
+            totalTime,
+            retieverend
+          }
         }) + "\n"
       );
 
