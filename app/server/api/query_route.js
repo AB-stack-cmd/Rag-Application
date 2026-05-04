@@ -100,15 +100,14 @@ router.post("/query/:id", async (req, res) => {
         Return response in Markdown format with proper bullet points and headings.
         DoNOT use raw asterisk lists without structure.`
     );
-
+    let fullText = null
+    
     try {
       for await (const chunk of result) {
         const text = chunk.content || "";
-
+            fullText += text; 
         if (!text) continue;
-
-        fullText += text; 
-
+      
         // send token event
         res.write(
           JSON.stringify({
