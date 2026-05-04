@@ -1,7 +1,10 @@
 'use client'
 
 import { useState, useRef, useEffect } from "react";
-
+import { ChatMessage } from "./ChatMessage";
+import Sidebar from "./Sidebar";
+import { conversations } from "./test/mockData";
+import test from "node:test";
 interface Message {
   role: "user" | "assistant";
   content: string;
@@ -14,7 +17,7 @@ export default function Main() {
   const [streamingMsg, setStreamingMsg] = useState("");
   const [pdfReady, setPdfReady] = useState(false);
   const [jobId, setJobId] = useState<string | null>(null);
-
+  const [sidebarOpen,setSidebarOpen] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -71,7 +74,7 @@ export default function Main() {
   );
 
   if (!res.body) return;
-  
+
 
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
@@ -97,10 +100,13 @@ export default function Main() {
 
       try {
         const event = JSON.parse(line);
+        console.log(`Event : ${event}` )
 
         if (event.type === "token") {
           finalText += event.content;
-          setStreamingMsg(finalText);
+          for (const text of finalText){
+          setStreamingMsg(text);
+          }
         }
 
         if (event.type === "done") {
@@ -119,89 +125,128 @@ export default function Main() {
   setLoading(false);
 }
   return (
-    <div className="flex h-screen bg-black text-white">
+    <div className="flex h-screen bg-[#212121] text-white">
 
-      {/* Sidebar */}
-      <div className="w-64 bg-[#111] border-r border-zinc-800 p-4 hidden md:flex flex-col">
-        <button className="mb-4 bg-zinc-800 p-2 rounded-lg hover:bg-zinc-700">
-          + New Chat
-        </button>
+  {/* SIDEBAR */}
+  <Sidebar
+    open={sidebarOpen}
+    onClose={() => setSidebarOpen(false)}
+    onSelect={conversations}
+    activeId={1}
+  />
 
-        <div className="text-xs text-gray-400 mt-auto">
-          PDF Mode: {pdfReady ? "Ready" : "Not Ready"}
-        </div>
-      </div>
+  {/* MAIN AREA */}
+  <div className="flex flex-col flex-1">
 
-      {/* Main */}
-      <div className="flex flex-col flex-1">
+    {/* HEADER */}
+    <div className="h-12 border-b border-[#2a2a2a] flex items-center px-4 gap-3">
 
-        {/* Header */}
-        <div className="border-b border-zinc-800 px-4 py-3 flex justify-between">
-          <span>ChatGPT PDF</span>
+      {/* ✅ NO absolute (this fixes alignment) */}
+      <button
+        onClick={() => setSidebarOpen(prev => !prev)}
+        className="p-2 rounded-md hover:bg-[#2a2a2a]"
+      >
+        ☰
+      </button>
 
-          <input
-            type="file"
-            accept="application/pdf"
-            onChange={(e) => {
-              if (e.target.files?.[0]) {
-                handleFileUpload(e.target.files[0]);
-              }
-            }}
-            className="text-sm"
-          />
-        </div>
+      <span className="text-sm text-gray-300">ChatGPT PDF</span>
 
-        {/* Chat */}
-        <div className="flex-1 overflow-y-auto px-6 py-6 space-y-6">
-
-          {messages.map((msg, i) => (
-            <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
-              <div className={`max-w-2xl px-4 py-3 rounded-xl text-sm ${
-                msg.role === "user" ? "bg-blue-600" : "bg-zinc-800"
-              }`}>
-                {msg.content}
-              </div>
-            </div>
-          ))}
-
-          {/* Streaming message */}
-          {streamingMsg && (
-            <div className="flex justify-start">
-              <div className="bg-zinc-800 px-4 py-3 rounded-xl text-sm max-w-2xl">
-                {streamingMsg}
-              </div>
-            </div>
-          )}
-
-          {loading && !streamingMsg && (
-            <div className="text-gray-400 text-sm">Thinking...</div>
-          )}
-
-          <div ref={bottomRef} />
-        </div>
-
-        {/* Input */}
-        <div className="border-t border-zinc-800 p-4">
-          <div className="flex gap-2">
-            <textarea
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              rows={1}
-              placeholder={pdfReady ? "Ask about your PDF..." : "Upload PDF first"}
-              className="flex-1 resize-none rounded-lg bg-zinc-900 px-4 py-2 text-sm outline-none border border-zinc-700"
-            />
-
-            <button
-              onClick={sendMessage}
-              className="bg-blue-600 px-4 py-2 rounded-lg text-sm hover:bg-blue-500"
-            >
-              Send
-            </button>
-          </div>
-        </div>
+      <div className="ml-auto">
+        <input
+          type="file"
+          accept="application/pdf"
+          onChange={(e) => {
+            if (e.target.files?.[0]) {
+              handleFileUpload(e.target.files[0]);
+            }
+          }}
+          className="text-xs text-gray-400"
+        />
       </div>
     </div>
-  );
-}
 
+    {/* CHAT AREA */}
+    <div className="flex-1 overflow-y-auto">
 
+      <div className="max-w-3xl mx-auto px-4 py-6 space-y-6">
+
+        {messages.map((msg, i) => (
+          <div
+            key={i}
+            className={`flex ${
+              msg.role === "user" ? "justify-end" : "justify-start"
+            }`}
+          >
+            <div
+              className={`
+                px-4 py-3 rounded-xl text-sm leading-6
+                max-w-[80%]
+                ${
+                  msg.role === "user"
+                    ? "bg-blue-600"
+                    : "bg-[#2a2a2a]"
+                }
+              `}
+            >
+              <ChatMessage content={msg.content} />
+            </div>
+          </div>
+        ))}
+
+        {/* STREAMING */}
+        {streamingMsg && (
+          <div className="flex justify-start">
+            <div className="bg-[#2a2a2a] px-4 py-3 rounded-xl text-sm max-w-[80%]">
+              {streamingMsg}
+            </div>
+          </div>
+        )}
+
+        {/* LOADING */}
+        {loading && !streamingMsg && (
+          <div className="text-gray-400 text-sm">Thinking...</div>
+        )}
+
+        <div ref={bottomRef} />
+      </div>
+    </div>
+
+    {/* INPUT (ALIGNED WITH CHAT COLUMN) */}
+    <div className="border-t border-[#2a2a2a] bg-[#212121] p-4">
+
+      <div className="max-w-3xl mx-auto flex gap-2">
+
+        <textarea
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          rows={1}
+          placeholder={pdfReady ? "Ask about your PDF..." : "Upload PDF first"}
+          className="
+            flex-1 resize-none rounded-xl
+            bg-[#2a2a2a]
+            px-4 py-3 text-sm
+            outline-none
+          "
+        />
+
+        <button
+          onClick={sendMessage}
+          className="
+            bg-white text-black
+            px-4 py-2 rounded-lg text-sm
+            hover:opacity-80
+          "
+        >
+          Send
+        </button>
+      </div>
+
+      {/* Footer status */}
+      <div className="max-w-3xl mx-auto mt-2 text-xs text-gray-500">
+        PDF Mode: {pdfReady ? "Ready" : "Not Ready"}
+      </div>
+    </div>
+
+  </div>
+</div>
+)}

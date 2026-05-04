@@ -107,7 +107,7 @@ router.post("/query/:id", async (req, res) => {
 
         if (!text) continue;
 
-        fullText += text;
+        fullText += text; 
 
         // send token event
         res.write(

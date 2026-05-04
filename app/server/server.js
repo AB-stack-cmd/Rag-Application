@@ -70,9 +70,6 @@ app.post("/upload", upload.single("pdf"), async (req, res) => {
 
 app.get("/status/:id", async (req, res) => {
   try {
-
-    
-  
     const jobId = req.params.id;
 
     const job = await pdfQueue.getJob(jobId);
